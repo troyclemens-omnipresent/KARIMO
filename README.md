@@ -180,6 +180,26 @@ No. You can use manual review, Claude Code Review, or any other review mechanism
 </details>
 
 <details>
+<summary><strong>Is KARIMO modular? What can I configure?</strong></summary>
+
+Yes — modularity was a core design goal. Nearly every decision point is configurable:
+
+| Aspect | Options |
+|--------|---------|
+| **Review gates** | Manual, Claude Code Review, Greptile, or skip entirely |
+| **Branch strategy** | PRs to main directly, or PRs to a feature branch first |
+| **Model routing** | Sonnet for speed, Opus for complexity, or always escalate |
+| **Boundaries** | `never_touch` files agents can't modify, `require_review` files that get flagged |
+| **Templates** | PRD structure, task briefs, commit messages — all editable |
+| **Agents & skills** | Modify behavior, add domain-specific skills, or create new agents |
+| **Research tools** | Firecrawl, other MCP servers, or your own integrations |
+| **Learnings** | Project-specific patterns and anti-patterns agents learn from |
+
+Run `/karimo:configure` to customize, or edit `.karimo/config.yaml` directly.
+
+</details>
+
+<details>
 <summary><strong>Can I use other tools for research?</strong></summary>
 
 Yes. We use Firecrawl MCP for deeper web research capability. You can integrate any MCP servers or tools that fit your workflow.
