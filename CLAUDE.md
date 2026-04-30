@@ -277,7 +277,7 @@ When you run `install.sh`, these files are added:
 |----------|----------|
 | `.claude/plugins/karimo/agents/` | **22** agent definitions (16 coordination + 6 task agents) |
 | `.claude/plugins/karimo/commands/` | **11** slash commands |
-| `.claude/plugins/karimo/skills/` | **7** skills (1 bash + 3 research + 3 task agent skills) |
+| `.claude/plugins/karimo/skills/` | **8** skills (2 coordination + 3 research + 3 task agent) |
 | `.claude/plugins/karimo/KARIMO_RULES.md` | Agent behavior rules |
 | `.karimo/templates/` | **18** templates |
 | `.karimo/scripts/` | **1** CLI script (asset management) |
@@ -292,13 +292,11 @@ When you run `install.sh`, these files are added:
 
 ### Skills
 
-All skills use the `karimo-*` prefix for reliable update management and clear distinction from user-added files.
+**Coordination skills:** bash-utilities, orchestration-inference
 
-**Coordination skills:** karimo-bash-utilities
+**Research skills:** research-methods, external-research, firecrawl-web-tools
 
-**Research skills:** karimo-research-methods, karimo-external-research
-
-**Task agent skills:** karimo-code-standards, karimo-testing-standards, karimo-doc-standards
+**Task agent skills:** code-standards, testing-standards, doc-standards
 
 ---
 
