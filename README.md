@@ -19,7 +19,9 @@
 
 ## See It In Action
 
-<!-- TODO: Embed demo video here -->
+<p align="center">
+  <img src="assets/demo.gif" alt="KARIMO Demo" width="800">
+</p>
 
 Want to see exactly how KARIMO works? Check out the [interactive demo](https://karimo-overview.vercel.app/) to understand why it was built and how it works in detail.
 
