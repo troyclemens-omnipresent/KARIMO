@@ -16,14 +16,15 @@ Create or update KARIMO configuration in `.karimo/config.yaml`. Use this when yo
 /karimo:configure --review       # Choose between review providers (interactive)
 /karimo:configure --cd           # Configure CD provider to skip KARIMO branches
 /karimo:configure --check        # Show current configuration status
+/karimo:configure --subscription # Configure Claude subscription for usage estimation
 ```
 
 **Configuration Modes:**
 
 | Mode | Time | Questions | Best For |
 |------|------|-----------|----------|
-| **Basic** (default) | ~5 min | 3 | Quick setup, standard projects |
-| **Advanced** (`--advanced`) | ~15 min | 9+ | Custom setup, non-standard projects |
+| **Basic** (default) | ~5 min | 4 | Quick setup, standard projects |
+| **Advanced** (`--advanced`) | ~15 min | 10+ | Custom setup, non-standard projects |
 | **Auto** (`--auto`) | <1 min | 0 | CI/CD, testing, scripted installs |
 
 **This command writes configuration to `.karimo/config.yaml` (single source of truth).**
@@ -778,6 +779,7 @@ Package Mgr:    pnpm
 GitHub:         opensesh/my-project
 Review Provider: greptile
 CD Provider:    vercel (configured)
+Subscription:   Max 5× (~220K tokens/5hr)
 
 Last Updated:   2026-03-11 10:30 AM
 ```
@@ -787,13 +789,175 @@ Read values from `.karimo/config.yaml`:
 - GitHub owner/repository
 - Review provider (none, greptile, code-review)
 - CD provider and status from `cd` section (if exists)
+- Subscription plan and capacity from `subscription` section (if exists)
 - Last modified timestamp of config.yaml file
+
+**Subscription display formats:**
+- `none`: "Subscription: not configured"
+- `pro`: "Subscription: Pro (~44K tokens/5hr)"
+- `max-5x`: "Subscription: Max 5× (~220K tokens/5hr)"
+- `max-20x`: "Subscription: Max 20× (~880K tokens/5hr)"
+- `team-standard`: "Subscription: Team Standard × 8 (~440K tokens/5hr)"
+- `team-premium`: "Subscription: Team Premium × 8 (~2.2M tokens/5hr)"
+- `enterprise` with capacity: "Subscription: Enterprise (~500K tokens/5hr)"
+- `enterprise` without capacity: "Subscription: Enterprise (no capacity set)"
 
 **If CD section doesn't exist in config.yaml:**
 
 Display `CD Provider: not configured` in the status output.
 
 **Exit after displaying status.** The `--check` flag is informational only.
+
+---
+
+### Quick Install: `--subscription` Flag (Claude Subscription Configuration)
+
+When the `--subscription` flag is passed, configure Claude subscription for usage estimation:
+
+**Step 1: Ask for subscription plan**
+
+Use AskUserQuestion:
+
+```
+header: "Subscription"
+question: "What Claude subscription plan are you using?"
+options:
+  - label: "Skip for now"
+    description: "Configure subscription later. Usage estimates will not show capacity comparison."
+  - label: "Claude Pro ($20/month)"
+    description: "Individual plan with standard capacity."
+  - label: "Claude Max 5× ($100/month)"
+    description: "Individual plan with 5× Pro capacity."
+  - label: "Claude Max 20× ($200/month)"
+    description: "Individual plan with 20× Pro capacity."
+  - label: "Team Standard (~$25/seat)"
+    description: "Team plan with per-seat capacity."
+  - label: "Team Premium (~$100-150/seat)"
+    description: "Team plan with higher per-seat capacity."
+  - label: "Enterprise (custom)"
+    description: "Custom allocation — you will provide your capacity estimate."
+```
+
+**If "Skip for now" selected:**
+
+Display message:
+```
+Skipped subscription configuration. Run /karimo:configure --subscription anytime to enable usage estimates.
+```
+
+Update config.yaml:
+```yaml
+subscription:
+  plan: none
+  configured_at: "2026-05-09T10:30:00Z"
+```
+
+Exit.
+
+**If Team plan selected (Team Standard or Team Premium):**
+
+Follow-up question for seat count:
+
+Use AskUserQuestion:
+
+```
+header: "Team Size"
+question: "How many seats does your team have?"
+options:
+  - label: "1-5 seats"
+    description: "Small team"
+  - label: "6-10 seats"
+    description: "Medium team"
+  - label: "11-20 seats"
+    description: "Larger team"
+  - label: "20+ seats"
+    description: "Large team — enter exact count"
+```
+
+If "20+ seats" selected, prompt for exact count:
+```
+Enter exact seat count: _____
+```
+
+Update config.yaml with plan and team_seats.
+
+**If Enterprise selected:**
+
+Display reactive input prompt:
+
+```
+╭──────────────────────────────────────────────────────────────╮
+│  Enterprise Capacity Configuration                           │
+╰──────────────────────────────────────────────────────────────╯
+
+Enterprise allocations vary significantly by contract.
+To enable usage estimation, please enter your approximate
+5-hour window capacity in tokens.
+
+Example: If you can use ~500K tokens in a 5-hour window, enter: 500000
+
+Common reference points:
+  • Pro capacity: ~44K tokens / 5hr window
+  • Max 5×: ~220K tokens / 5hr window
+  • Max 20×: ~880K tokens / 5hr window
+
+Enter capacity (or 'skip' to show token estimates only): _____
+```
+
+If user enters a number:
+```yaml
+subscription:
+  plan: enterprise
+  enterprise_capacity: 500000  # user-provided value
+  configured_at: "2026-05-09T10:30:00Z"
+```
+
+If user enters 'skip':
+```yaml
+subscription:
+  plan: enterprise
+  enterprise_capacity: 0  # skip capacity comparison
+  configured_at: "2026-05-09T10:30:00Z"
+```
+
+**Step 2: Update config.yaml**
+
+For individual plans (Pro, Max 5×, Max 20×):
+```yaml
+subscription:
+  plan: pro  # or max-5x, max-20x
+  team_seats: 1
+  enterprise_capacity: 0
+  configured_at: "2026-05-09T10:30:00Z"
+```
+
+For team plans:
+```yaml
+subscription:
+  plan: team-standard  # or team-premium
+  team_seats: 8  # user-provided
+  enterprise_capacity: 0
+  configured_at: "2026-05-09T10:30:00Z"
+```
+
+**Step 3: Display confirmation**
+
+```
+╭──────────────────────────────────────────────────────────────╮
+│  Subscription Configuration Complete                         │
+╰──────────────────────────────────────────────────────────────╯
+
+✅ Subscription: Max 5× ($100/month)
+✅ Estimated 5hr capacity: ~220K tokens
+
+Usage estimates will now appear in PRD planning summaries.
+This helps you understand if a PRD fits within your subscription capacity.
+
+Note: Capacity estimates are approximate and based on community data.
+      Actual usage varies by conversation complexity.
+```
+
+**Exit after configuration.** The `--subscription` flag is a quick-configuration shortcut.
 
 ---
 
@@ -938,7 +1102,7 @@ fi
 
 ## Basic Mode Flow (Default)
 
-**Time: ~5 minutes | Questions: 3**
+**Time: ~5 minutes | Questions: 4**
 
 Basic Mode auto-detects everything and asks only essential questions.
 
@@ -981,7 +1145,7 @@ Let's confirm a few key settings...
 
 ### Basic Step 2: Confirm Detection
 
-**Question 1 of 3: Confirm detected settings**
+**Question 1 of 4: Confirm detected settings**
 
 Use AskUserQuestion:
 
@@ -1008,7 +1172,7 @@ options:
 
 ### Basic Step 3: File Boundaries
 
-**Question 2 of 3: Which files should agents never touch?**
+**Question 2 of 4: Which files should agents never touch?**
 
 Show common patterns based on detected framework:
 
@@ -1056,7 +1220,7 @@ Link to: `.karimo/docs/GLOB_PATTERNS.md`
 
 ### Basic Step 4: Automated Review
 
-**Question 3 of 3: Enable automated code review?**
+**Question 3 of 4: Enable automated code review?**
 
 Use AskUserQuestion:
 
@@ -1093,6 +1257,44 @@ options:
 
 ---
 
+### Basic Step 5: Claude Subscription
+
+**Question 4 of 4: What Claude subscription are you using?**
+
+Use AskUserQuestion:
+
+```
+header: "Subscription"
+question: "What Claude subscription plan are you using?"
+options:
+  - label: "Skip for now"
+    description: "Configure later. PRD summaries won't show usage capacity comparison."
+  - label: "Claude Pro ($20/month)"
+    description: "Individual plan with standard capacity."
+  - label: "Claude Max 5× ($100/month) (Recommended)"
+    description: "Individual plan with 5× Pro capacity."
+  - label: "Claude Max 20× ($200/month)"
+    description: "Individual plan with 20× Pro capacity."
+```
+
+**Note:** This step only shows individual plans in Basic Mode. For Team or Enterprise plans, use `--subscription` flag or Advanced Mode.
+
+**If "Skip for now" selected:**
+- Skip subscription setup
+- Document in config.yaml: `subscription.plan: "none"`
+
+**If individual plan selected:**
+- Document in config.yaml:
+  ```yaml
+  subscription:
+    plan: pro  # or max-5x, max-20x
+    team_seats: 1
+    enterprise_capacity: 0
+    configured_at: "2026-05-09T10:30:00Z"
+  ```
+
+---
+
 ### Basic Mode: Ensure Gitignore
 
 Before saving, ensure worktrees are gitignored:
@@ -1115,7 +1317,7 @@ fi
 
 ### Basic Mode: Save Configuration
 
-After 3 questions answered, save to `.karimo/config.yaml`:
+After 4 questions answered, save to `.karimo/config.yaml`:
 
 ```yaml
 config_version: "2.0"
@@ -1176,6 +1378,13 @@ cost_controls:
   enable_escalation: true
   max_attempts: 3
   retry_delay_seconds: 10
+
+# Claude subscription (v9.10)
+subscription:
+  plan: none                  # none | pro | max-5x | max-20x | team-standard | team-premium | enterprise
+  team_seats: 1
+  enterprise_capacity: 0
+  configured_at: ""
 ```
 
 **Display confirmation:**
