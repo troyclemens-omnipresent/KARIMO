@@ -130,7 +130,7 @@ If user chooses [S]:
 
 **Trigger:** After Round 2.5 (Complexity Assessment), before Round 3 (Dependencies)
 
-**Purpose:** Recommend orchestration settings based on complexity metrics.
+**Purpose:** Recommend orchestration settings and display subscription usage estimation.
 
 ### Inference Engine
 
@@ -140,6 +140,7 @@ Use the `orchestration-inference` skill to generate recommendations based on:
 - High-risk task count (complexity 7+)
 - Tasks touching `require_review` files
 - Configured review provider
+- Subscription plan and capacity (for usage estimation)
 
 ### Display Format
 
@@ -161,11 +162,43 @@ Gates: {gate_count} gates, model={model}
   {placements with labels}
   {reason}
 
+───────────────────────────────────────────
+Claude Usage Estimate:
+  PRD token usage: ~{estimated_tokens}K tokens (rough estimate)
+  {capacity_display}
+  {percentage_display if applicable}
+
+  Note: Estimates are approximate. Actual usage varies.
+
 ─────────────────────────────────────────────────────────────────
 [Y] Accept recommendations
 [C] Customize settings
 [S] Skip orchestration config (use defaults)
 ```
+
+### Subscription Usage Estimation
+
+After orchestration settings, display estimated PRD token usage relative to subscription capacity.
+
+**Token Estimation:**
+- PM Bootstrap: ~60K tokens
+- Sonnet tasks: 15K + (complexity × 5K)
+- Opus tasks: 25K + (complexity × 10K)
+
+**Capacity Display by Plan:**
+- `pro`: "Your capacity (Pro): ~44K tokens / 5hr window"
+- `max-5x`: "Your capacity (Max 5×): ~220K tokens / 5hr window"
+- `max-20x`: "Your capacity (Max 20×): ~880K tokens / 5hr window"
+- `team-standard`: "Your capacity (Team Standard × N): ~{N×55K} tokens / 5hr window"
+- `team-premium`: "Your capacity (Team Premium × N): ~{N×275K} tokens / 5hr window"
+- `enterprise` with capacity: "Your capacity (Enterprise): ~{capacity}K tokens / 5hr window"
+- `enterprise` without capacity: "Enterprise plan: No capacity comparison (custom allocation)"
+- `none`: "💡 Run /karimo:configure --subscription to see capacity comparison"
+
+**Percentage Indicators:**
+- ≤50%: "✓ Well within your capacity"
+- 51-100%: (no indicator)
+- >100%: "⚠️ This PRD may span multiple 5hr windows"
 
 ### User Response Handling
 
