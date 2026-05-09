@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [9.10.0] - 2026-05-09
+
+### Added
+
+- **Subscription Usage Estimation** — PRD planning summaries now show estimated Claude token usage relative to your subscription capacity:
+
+  - **Subscription Configuration** — New `subscription` section in config.yaml with plan type, team seats, and enterprise capacity
+  - **`--subscription` Flag** — Quick configuration via `/karimo:configure --subscription`
+  - **Basic Mode Question** — Added as question 4 of 4 in Basic Mode configuration
+  - **Round 2.6 Display** — Shows estimated tokens, capacity comparison, and percentage indicator
+
+  **Supported Plans:**
+  - Individual: Pro ($20/mo), Max 5× ($100/mo), Max 20× ($200/mo)
+  - Team: Team Standard (~$25/seat), Team Premium (~$100-150/seat)
+  - Enterprise: Custom capacity (user-provided or token-only display)
+
+  **Token Estimation Formula:**
+  ```
+  PRD Tokens = PM Bootstrap (~60K) + Σ(Task Tokens)
+  Task Tokens: Sonnet: 15K + (complexity × 5K), Opus: 25K + (complexity × 10K)
+  ```
+
+- **`--check` Flag Enhancement** — Now displays subscription status and capacity
+
+### Changed
+
+- **CONFIG_TEMPLATE.yaml** — Added `subscription` section schema
+- **configure.md** — Basic Mode now has 4 questions (was 3)
+- **orchestration-inference.md** — Added subscription usage estimation logic and display formats
+- **interviewer.md** — Round 2.6 now includes usage estimation display
+- **TOKEN-ECONOMICS.md** — Added comprehensive subscription usage estimation documentation
+
+---
+
 ## [9.9.1] - 2026-04-28
 
 ### Fixed
