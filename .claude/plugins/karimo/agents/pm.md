@@ -1177,6 +1177,9 @@ done
 
 # v9.8: Reconcile active_worktrees from git state
 reconcile_active_worktrees "$prd_slug"
+
+# v9.10.1: Clean up orphaned worktrees from prior runs
+cleanup_orphaned_worktrees "$prd_slug"
 ```
 
 **Reconciliation Rules:**
@@ -1381,6 +1384,48 @@ reconcile_active_worktrees() {
 
   local count=$(jq '.active_worktrees | length' "$status_file")
   echo "  ✓ Reconciled $count active worktrees"
+}
+
+# Cleanup orphaned worktrees from prior runs (v9.10.1)
+# Runs on PM startup to catch worktrees missed due to crashes/interruptions
+cleanup_orphaned_worktrees() {
+  local prd_slug="$1"
+  local status_file="${prd_path}/status.json"
+
+  echo "Checking for orphaned worktrees..."
+
+  local cleaned_count=0
+
+  # Walk git worktree list for this PRD
+  while IFS= read -r line; do
+    [[ "$line" =~ ^worktree ]] || continue
+    local wt_path=$(echo "$line" | sed 's/^worktree //')
+
+    # Only process worktrees for this PRD
+    [[ "$wt_path" == *".karimo/.worktrees/${prd_slug}/"* ]] || continue
+    [ -d "$wt_path" ] || continue
+
+    local task_id=$(basename "$wt_path")
+    local branch_name="worktree/${prd_slug}-${task_id}"
+
+    # Check if this task's PR is merged
+    local pr_number=$(jq -r --arg tid "$task_id" '.tasks[$tid].pr_number // empty' "$status_file" 2>/dev/null)
+
+    if [ -n "$pr_number" ]; then
+      local merged_at=$(gh pr view "$pr_number" --json mergedAt --jq '.mergedAt' 2>/dev/null)
+      if [ -n "$merged_at" ] && [ "$merged_at" != "null" ]; then
+        echo "  Found orphan: $task_id (PR #$pr_number merged at $merged_at)"
+        cleanup_task_worktree "$prd_slug" "$task_id"
+        cleaned_count=$((cleaned_count + 1))
+      fi
+    fi
+  done < <(git worktree list --porcelain 2>/dev/null)
+
+  if [ "$cleaned_count" -gt 0 ]; then
+    echo "  ✓ Cleaned $cleaned_count orphaned worktrees"
+  else
+    echo "  ✓ No orphaned worktrees found"
+  fi
 }
 ```
 
@@ -2010,6 +2055,8 @@ complete_wave() {
       echo "  Wave cadence: creating wave PR for review"
       create_wave_pr "$wave_number"
       wait_for_pr_merge "wave/${prd_slug}-w${wave_number}"
+      # v9.10.1: Clean up task worktrees after wave PR merges
+      cleanup_wave_tasks "$wave_number"
       ;;
     "feature")
       # Each task already created individual PR to feature branch
@@ -2144,12 +2191,32 @@ verify_wave_prs_merged() {
 }
 
 # Merge wave tasks to feature (for worktree cadence - default behavior)
+# v9.10.1: Now cleans up task worktrees after wave completes
 merge_wave_to_feature() {
   local wave_number="$1"
 
-  # This is the current default behavior - tasks already on feature branch
-  # Just verify and log
+  # Tasks already merged to feature branch - clean up their worktrees
+  cleanup_wave_tasks "$wave_number"
+
   echo "  ✓ Wave $wave_number tasks merged to feature branch"
+}
+
+# Clean up all task worktrees for a completed wave (v9.10.1)
+cleanup_wave_tasks() {
+  local wave_number="$1"
+
+  local wave_tasks=$(jq -r --arg wave "$wave_number" \
+    '.tasks | to_entries[] | select(.value.wave == ($wave | tonumber)) | .key' \
+    "$status_file")
+
+  echo "Cleaning up wave $wave_number worktrees..."
+  for task_id in $wave_tasks; do
+    # Only cleanup tasks that are done (PR merged)
+    local task_status=$(jq -r --arg tid "$task_id" '.tasks[$tid].status // empty' "$status_file")
+    if [ "$task_status" = "done" ] || [ "$task_status" = "merged" ]; then
+      cleanup_task_worktree "$prd_slug" "$task_id"
+    fi
+  done
 }
 ```
 
@@ -2199,32 +2266,38 @@ fi
 
 **Why:** Task PRs target the feature branch, which must exist on origin for GitHub PR creation. Without this push, `/karimo:merge` fails because the feature branch exists locally but not on origin.
 
-#### Wave Cleanup (Simplified)
+#### Wave Cleanup (v9.10.1)
 
-After all tasks in a wave have merged, verify cleanup status. **Native Claude Code hooks handle the primary cleanup** — the `WorktreeRemove` hook deletes local and remote branches when worktrees are removed. This runs as a belt-and-suspenders verification.
+After all tasks in a wave have merged, cleanup runs via `cleanup_wave_tasks()`:
 
 ```bash
-echo "Verifying wave cleanup..."
+# v9.10.1: cleanup_wave_tasks() runs at wave completion for all cadences
+cleanup_wave_tasks() {
+  local wave_number="$1"
 
-# Prune stale worktree references (belt-and-suspenders)
-git worktree prune
+  local wave_tasks=$(jq -r --arg wave "$wave_number" \
+    '.tasks | to_entries[] | select(.value.wave == ($wave | tonumber)) | .key' \
+    "$status_file")
 
-# Verify completed task branches were cleaned by native hooks
-for task_id in ${completed_wave_tasks}; do
-  branch="worktree/${prd_slug}-${task_id}"
-
-  # Native hooks should have deleted these — verify and clean if missed
-  if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
-    echo "  Note: Native hook missed $branch, cleaning now"
-    git branch -D "$branch" 2>/dev/null || true
-    git push origin --delete "$branch" 2>/dev/null || true
-  fi
-done
-
-echo "  ✓ Wave cleanup verified"
+  echo "Cleaning up wave $wave_number worktrees..."
+  for task_id in $wave_tasks; do
+    local task_status=$(jq -r --arg tid "$task_id" '.tasks[$tid].status // empty' "$status_file")
+    if [ "$task_status" = "done" ] || [ "$task_status" = "merged" ]; then
+      cleanup_task_worktree "$prd_slug" "$task_id"
+    fi
+  done
+}
 ```
 
-**Note:** Primary cleanup is handled by Claude Code native hooks configured in `.claude/settings.json`. The `WorktreeRemove` hook fires when worktrees are removed, deleting both local and remote branches. This verification step catches any edge cases.
+**Cleanup happens at these points:**
+
+| Cadence | When Cleanup Runs |
+|---------|-------------------|
+| `worktree` | `merge_wave_to_feature()` calls `cleanup_wave_tasks()` |
+| `wave` | After `wait_for_pr_merge()`, calls `cleanup_wave_tasks()` |
+| `feature` | `verify_wave_prs_merged()` calls `cleanup_task_worktree()` for each merged task |
+
+**Eventual consistency:** PM startup runs `cleanup_orphaned_worktrees()` to catch any worktrees missed due to crashes or interruptions.
 
 ---
 
