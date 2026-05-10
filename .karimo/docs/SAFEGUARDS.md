@@ -389,29 +389,38 @@ If a branch mismatch is detected:
 - Or wait for wave transitions (natural pause points)
 - Never checkout branches while KARIMO is executing
 
-**Worktree Cleanup (v7.18.0, enhanced v7.21.0):**
+**Worktree Cleanup (v9.10.1):**
 
-KARIMO v7.21.0 introduces a **hybrid hook system** for reliable cleanup:
+KARIMO uses a **three-tier cleanup system** to ensure worktrees and branches are removed after PRs merge:
 
-### Native Hooks (Guaranteed Execution)
+### Tier 1: Wave Completion (Primary)
 
-Configured in `.claude/settings.json`, these fire automatically via Claude Code runtime:
+After each wave completes, `cleanup_wave_tasks()` removes worktrees for merged tasks:
 
-| Hook | When | What it Cleans |
-|------|------|----------------|
-| `WorktreeRemove` | Before worktree removal | Local + remote branches for the task |
-| `SubagentStop` | After worker agent finishes | Prunes stale worktree references |
-| `SessionEnd` | When session ends | Orphaned branches (`worktree/*-*`, `worktree-agent-*`) |
+| Cadence | Cleanup Callsite |
+|---------|------------------|
+| `worktree` | `merge_wave_to_feature()` → `cleanup_wave_tasks()` |
+| `wave` | After `wait_for_pr_merge()` → `cleanup_wave_tasks()` |
+| `feature` | `verify_wave_prs_merged()` → `cleanup_task_worktree()` per task |
 
-**Why native hooks?** They fire even if a session crashes mid-execution, guaranteeing cleanup that was previously only possible at orchestration points.
+### Tier 2: Startup Reaper (Recovery)
 
-### Orchestration Cleanup (Belt-and-Suspenders)
+On PM Agent resume, `cleanup_orphaned_worktrees()` catches worktrees from interrupted sessions:
 
-In addition to native hooks, orchestration-level cleanup verifies:
+```bash
+# Runs during state reconciliation
+cleanup_orphaned_worktrees "$prd_slug"
+```
 
-1. **Wave-level verification:** After each wave completes, verifies branches were cleaned by native hooks and catches any missed.
+This checks each worktree's PR status and cleans merged ones.
 
-2. **Finalizer verification:** At PRD completion, PM-Finalizer verifies all cleanup completed and catches edge cases.
+### Tier 3: Finalizer (Verification)
+
+At PRD completion, PM-Finalizer verifies cleanup is complete and catches edge cases:
+
+- Stale remote branches
+- Stale local branches
+- Orphaned worktree directories
 
 ### What Gets Cleaned
 
@@ -420,13 +429,12 @@ In addition to native hooks, orchestration-level cleanup verifies:
 - Both local and remote branches
 - Stale worktree references (via `git worktree prune`)
 
-### TTL Policies (Future Implementation)
+### Manual Cleanup
 
-| Scenario | TTL | Action |
-|----------|-----|--------|
-| PR merged | Immediate | Native hook cleans |
-| PR closed without merge | 24 hours | Session end hook cleans |
-| Stale worktree | 7 days | Session end hook cleans |
+Run `/karimo:doctor --fix` to clean orphaned worktrees from:
+- Interrupted executions
+- Upgrades from pre-9.10.1 versions
+- Edge cases not caught by automatic cleanup
 
 ---
 
