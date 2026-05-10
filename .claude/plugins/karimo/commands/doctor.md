@@ -7,9 +7,10 @@ Check the health of a KARIMO installation, identify issues, and provide actionab
 ```
 /karimo:doctor              # Full diagnostic with recommendations
 /karimo:doctor --test       # Quick pass/fail verification (replaces /karimo-test)
+/karimo:doctor --fix        # Clean orphaned worktrees and branches
 ```
 
-**This command is read-only and never modifies files.**
+**The `--fix` flag is the only mode that modifies files.**
 
 ---
 
@@ -83,6 +84,97 @@ Summary
 2. **Fast** — No agent spawning or network calls (except gh auth check)
 3. **Safe** — No worktree creation, PR simulation, or state changes
 4. **Lightweight** — Quick validation suitable for CI/pre-commit
+
+---
+
+## `--fix` Mode (Orphan Cleanup)
+
+When the `--fix` flag is passed, automatically clean up orphaned worktrees and branches without interactive prompts.
+
+**Purpose:** Reclaim disk space from leaked worktrees after interrupted executions or upgrades from versions with cleanup bugs (pre-9.10.1).
+
+### Cleanup Actions
+
+1. Source the cleanup library: `.karimo/scripts/lib/cleanup.sh`
+2. Find all PRDs in `.karimo/prds/`
+3. For each PRD, run `cleanup_all_prd_orphans()`
+4. Run `cleanup_stale_branches()` to clean ghost branches
+5. Report what was cleaned
+
+### Implementation
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "╭──────────────────────────────────────────────────────────────╮"
+echo "│  KARIMO Doctor --fix                                         │"
+echo "╰──────────────────────────────────────────────────────────────╯"
+echo ""
+
+# Source cleanup library
+if [ -f ".karimo/scripts/lib/cleanup.sh" ]; then
+  source .karimo/scripts/lib/cleanup.sh
+else
+  echo "❌ Cleanup library not found: .karimo/scripts/lib/cleanup.sh"
+  echo "   Run /karimo:update to install latest KARIMO version"
+  exit 1
+fi
+
+# Track totals
+total_worktrees=0
+total_branches=0
+total_errors=0
+
+# Clean orphaned worktrees for all PRDs
+cleanup_all_prd_orphans
+
+# Clean stale branches (worktree/* branches without worktrees or PRs)
+cleanup_stale_branches
+
+echo ""
+echo "Done. Run /karimo:doctor to verify cleanup."
+```
+
+### Output Format
+
+```
+╭──────────────────────────────────────────────────────────────╮
+│  KARIMO Doctor --fix                                         │
+╰──────────────────────────────────────────────────────────────╯
+
+Scanning for orphaned worktrees across all PRDs...
+
+PRD: user-profiles
+  ✓ Cleaned worktree: .karimo/.worktrees/user-profiles/1a
+  ✓ Deleted branch: worktree/user-profiles-1a (local + remote)
+
+PRD: token-studio
+  ✓ No orphans found
+
+Checking for stale worktree branches...
+  ✓ No stale branches found
+
+Summary
+───────
+
+  ✓ 1 worktree cleaned
+  ✓ 2 branches deleted (1 local, 1 remote)
+
+Done. Run /karimo:doctor to verify cleanup.
+```
+
+### Exit Codes
+
+- **0** — Cleanup completed successfully
+- **1** — Cleanup errors occurred (some resources may remain)
+
+### Key Behaviors
+
+1. **Destructive** — Removes worktree directories and deletes branches
+2. **Idempotent** — Safe to run multiple times
+3. **Non-interactive** — No prompts or confirmations
+4. **Logged** — All actions are echoed to stdout
 
 ---
 
