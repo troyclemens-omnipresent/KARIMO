@@ -1,0 +1,874 @@
+<!--
+  KARIMO COCKPIT — a CRT-style command surface for driving KARIMO sessions in Claude Code.
+  Self-contained. State persists via window.storage (artifact runtime) with in-memory fallback.
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KARIMO // COCKPIT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --bg:#050806;
+    --bg-deep:#03060500;
+    --panel:#0a100c;
+    --panel-2:#0d1510;
+    --line:#152a1e;
+    --line-bright:#1f4a32;
+    --phos:#46f0a0;          /* primary phosphor */
+    --phos-bright:#8affc8;
+    --phos-dim:#2a8a5e;
+    --phos-ghost:#15402c;
+    --amber:#ffb13d;          /* gates / attention */
+    --amber-dim:#7a5418;
+    --red:#ff5d5d;            /* blocked / fail */
+    --red-dim:#7a2828;
+    --cyan:#57d8ff;           /* links / accents */
+    --ink:#cfeede;
+    --ink-soft:#7fb79c;
+    --radius:3px;
+    --mono:'IBM Plex Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+    --crt:'VT323', var(--mono);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(120% 90% at 50% 0%, #0a1410 0%, var(--bg) 55%, #020403 100%);
+    color:var(--ink);
+    font-family:var(--mono);
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* ---- CRT overlays ---- */
+  .crt-scan, .crt-vignette{position:fixed; inset:0; pointer-events:none; z-index:50}
+  .crt-scan{
+    background:repeating-linear-gradient(0deg,
+      rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px,
+      rgba(0,0,0,.22) 3px, rgba(0,0,0,.22) 3px);
+    mix-blend-mode:multiply; opacity:.55;
+  }
+  .crt-vignette{
+    background:radial-gradient(120% 100% at 50% 50%, rgba(0,0,0,0) 58%, rgba(0,0,0,.55) 100%);
+    box-shadow:inset 0 0 160px rgba(0,0,0,.7);
+  }
+  .crt-flicker{position:fixed; inset:0; pointer-events:none; z-index:51; background:var(--phos); opacity:0; mix-blend-mode:overlay; animation:flick 7s infinite steps(1)}
+  @keyframes flick{0%,96%,100%{opacity:0} 97%{opacity:.018} 98%{opacity:.05} 99%{opacity:.012}}
+
+  .glow{text-shadow:0 0 6px rgba(70,240,160,.55), 0 0 2px rgba(70,240,160,.5)}
+
+  /* ---- boot ---- */
+  #boot{position:fixed; inset:0; z-index:80; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:24px; cursor:pointer}
+  #boot .term{width:min(720px,100%); font-size:13px; color:var(--phos)}
+  #boot pre{margin:0 0 14px; color:var(--phos); line-height:1; font-size:clamp(7px,2.1vw,13px)}
+  #boot .ln{white-space:pre-wrap; opacity:0}
+  #boot .ln.on{opacity:1}
+  #boot .skip{position:absolute; bottom:22px; right:26px; color:var(--phos-dim); font-size:12px}
+
+  /* ---- shell frame ---- */
+  .wrap{max-width:1180px; margin:0 auto; padding:22px clamp(12px,3vw,26px) 130px}
+  .frame{
+    border:1px solid var(--line-bright);
+    border-radius:var(--radius);
+    background:linear-gradient(180deg, var(--panel) 0%, #070c09 100%);
+    box-shadow:0 0 0 1px #000 inset, 0 24px 60px -30px #000;
+    overflow:hidden;
+  }
+  .titlebar{
+    display:flex; align-items:center; gap:12px;
+    padding:9px 14px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0e1612,#0a110d);
+  }
+  .dots{display:flex; gap:6px}
+  .dot{width:10px; height:10px; border-radius:50%; border:1px solid #00000055}
+  .dot.r{background:#ff5d5d33; border-color:#ff5d5d77}
+  .dot.y{background:#ffb13d33; border-color:#ffb13d77}
+  .dot.g{background:#46f0a033; border-color:#46f0a077}
+  .titlebar .tt{color:var(--ink-soft); font-size:12px; letter-spacing:.5px}
+  .titlebar .tt b{color:var(--phos)}
+  .titlebar .spacer{flex:1}
+  .ghostbtn{
+    appearance:none; background:transparent; color:var(--ink-soft); border:1px solid var(--line);
+    font-family:var(--mono); font-size:11px; letter-spacing:.6px; padding:4px 9px; border-radius:var(--radius);
+    cursor:pointer; text-transform:uppercase;
+  }
+  .ghostbtn:hover{color:var(--phos); border-color:var(--phos-dim)}
+
+  /* ---- status strip ---- */
+  .status{
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px;
+    padding:12px 16px; border-bottom:1px solid var(--line); background:#070d09;
+  }
+  .status .seg{display:flex; align-items:baseline; gap:7px; font-size:12px}
+  .status .k{color:var(--phos-dim); text-transform:uppercase; letter-spacing:.7px; font-size:10px}
+  .status .v{color:var(--ink)}
+  .status .v.proj{color:var(--phos); font-weight:600}
+  .pill{display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:999px; border:1px solid var(--line-bright); font-size:11px; text-transform:uppercase; letter-spacing:.6px}
+  .pill .led{width:7px; height:7px; border-radius:50%; background:var(--phos); box-shadow:0 0 7px var(--phos)}
+  .pill.warn{border-color:var(--amber-dim); color:var(--amber)} .pill.warn .led{background:var(--amber); box-shadow:0 0 7px var(--amber)}
+
+  /* ---- tabs ---- */
+  .tabs{display:flex; gap:0; border-bottom:1px solid var(--line); background:#060b08; overflow-x:auto}
+  .tab{
+    appearance:none; background:transparent; border:0; border-right:1px solid var(--line);
+    color:var(--ink-soft); font-family:var(--mono); font-size:12px; letter-spacing:1px; text-transform:uppercase;
+    padding:11px 18px; cursor:pointer; white-space:nowrap; position:relative;
+  }
+  .tab:hover{color:var(--phos)}
+  .tab.active{color:var(--phos); background:var(--panel-2)}
+  .tab.active::after{content:''; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--phos); box-shadow:0 0 10px var(--phos)}
+  .tab .badge{margin-left:7px; color:var(--phos-dim)}
+
+  .pane{padding:20px clamp(14px,3vw,24px); display:none; animation:fade .25s ease}
+  .pane.active{display:block}
+  @keyframes fade{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+
+  h2.section{font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--phos-dim); margin:0 0 14px; font-weight:600}
+  .eyebrow{font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--phos-dim)}
+
+  /* ---- pipeline ---- */
+  .loops{display:grid; gap:14px}
+  .loop{border:1px solid var(--line); border-radius:var(--radius); background:#070d09; overflow:hidden}
+  .loop-head{display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid var(--line); background:#0b120e}
+  .loop-head .num{font-family:var(--crt); font-size:22px; color:var(--phos-dim); line-height:1}
+  .loop-head .nm{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-soft)}
+  .loop-head .driver{margin-left:auto; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--phos-dim)}
+  .steps{display:flex; flex-wrap:wrap; gap:10px; padding:14px}
+  .step{
+    flex:1 1 150px; min-width:140px; border:1px solid var(--line); border-radius:var(--radius);
+    padding:11px 12px; background:#060b08; cursor:pointer; transition:.15s; position:relative;
+  }
+  .step:hover{border-color:var(--phos-dim)}
+  .step .cmd{color:var(--phos); font-size:13px}
+  .step .desc{color:var(--ink-soft); font-size:11px; margin-top:4px; line-height:1.35}
+  .step .mk{position:absolute; top:9px; right:10px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--phos-dim)}
+  .step.done{opacity:.55} .step.done .cmd{color:var(--phos-dim)} .step.done .mk{color:var(--phos)}
+  .step.current{border-color:var(--phos); box-shadow:0 0 0 1px var(--phos) inset, 0 0 22px -8px var(--phos)}
+  .step.current .cmd{color:var(--phos-bright)}
+  .step.locked{opacity:.32; cursor:not-allowed}
+  .gate-row{display:flex; align-items:center; gap:10px; padding:8px 14px 14px}
+  .gate-tag{border:1px dashed var(--amber-dim); color:var(--amber); font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:3px 9px; border-radius:999px}
+
+  /* ---- tables / forms ---- */
+  .row{display:flex; flex-wrap:wrap; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px; flex:1 1 180px; min-width:150px}
+  .field label{font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--phos-dim)}
+  input,select,textarea{
+    font-family:var(--mono); font-size:13px; color:var(--ink);
+    background:#04080600; border:1px solid var(--line-bright); border-radius:var(--radius);
+    padding:8px 10px; outline:none; background:#04070500;
+  }
+  input,select,textarea{background:#050a07}
+  input:focus,select:focus,textarea:focus{border-color:var(--phos); box-shadow:0 0 0 1px var(--phos-dim)}
+  ::placeholder{color:#3c6b53}
+
+  .btn{
+    appearance:none; cursor:pointer; font-family:var(--mono); font-size:12px; letter-spacing:.8px; text-transform:uppercase;
+    padding:8px 14px; border-radius:var(--radius); border:1px solid var(--phos-dim); color:var(--phos);
+    background:linear-gradient(180deg,#0c1812,#091108); transition:.15s;
+  }
+  .btn:hover{border-color:var(--phos); box-shadow:0 0 18px -6px var(--phos); color:var(--phos-bright)}
+  .btn.solid{background:var(--phos); color:#04130c; border-color:var(--phos); font-weight:700}
+  .btn.solid:hover{background:var(--phos-bright)}
+  .btn.ghost{border-color:var(--line-bright); color:var(--ink-soft)}
+  .btn.ghost:hover{color:var(--phos); border-color:var(--phos-dim)}
+  .btn.sm{padding:5px 9px; font-size:11px}
+
+  .yaml{
+    background:#040806; border:1px solid var(--line); border-radius:var(--radius);
+    padding:13px 15px; font-size:12.5px; color:var(--ink-soft); white-space:pre; overflow:auto; line-height:1.55;
+  }
+  .yaml .key{color:var(--cyan)} .yaml .val{color:var(--phos)} .yaml .cm{color:var(--phos-dim)}
+
+  /* ---- waves / tasks ---- */
+  .prd-bar{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:16px}
+  .prd-bar select{flex:1 1 220px; min-width:200px}
+  .waves{display:flex; gap:14px; overflow-x:auto; padding-bottom:8px}
+  .wave{flex:0 0 250px; border:1px solid var(--line); border-radius:var(--radius); background:#070d09; display:flex; flex-direction:column}
+  .wave-head{display:flex; align-items:center; gap:8px; padding:9px 12px; border-bottom:1px solid var(--line); background:#0b120e}
+  .wave-head .wn{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--phos)}
+  .wave-head .ct{margin-left:auto; font-size:11px; color:var(--ink-soft)}
+  .wave-body{padding:10px; display:flex; flex-direction:column; gap:8px; min-height:50px}
+  .task{border:1px solid var(--line); border-radius:var(--radius); padding:9px 10px; background:#050a07}
+  .task .t1{display:flex; align-items:center; gap:8px}
+  .task .tid{font-size:10px; color:var(--phos-dim); letter-spacing:.5px}
+  .task .ttl{font-size:12.5px; color:var(--ink); flex:1; line-height:1.3}
+  .task .agent{font-size:10px; color:var(--cyan); margin-top:5px; opacity:.8}
+  .chip{
+    font-size:9px; letter-spacing:.8px; text-transform:uppercase; padding:2px 7px; border-radius:999px;
+    border:1px solid var(--line-bright); color:var(--ink-soft); cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .chip[data-s="pending"]{color:var(--phos-dim); border-color:var(--line-bright)}
+  .chip[data-s="active"]{color:#04130c; background:var(--phos); border-color:var(--phos)}
+  .chip[data-s="review"]{color:var(--amber); border-color:var(--amber-dim)}
+  .chip[data-s="blocked"]{color:var(--red); border-color:var(--red-dim)}
+  .chip[data-s="done"]{color:var(--phos-dim); border-color:var(--phos-dim); text-decoration:line-through}
+  .gate{flex:0 0 26px; display:flex; align-items:center; justify-content:center}
+  .gate .bar{writing-mode:vertical-rl; transform:rotate(180deg); font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--amber); border:1px dashed var(--amber-dim); padding:8px 3px; border-radius:999px; cursor:pointer; height:100%}
+  .gate .bar.passed{color:var(--phos-dim); border-color:var(--phos-dim); border-style:solid}
+
+  .empty{border:1px dashed var(--line-bright); border-radius:var(--radius); padding:26px; text-align:center; color:var(--ink-soft)}
+  .empty .big{color:var(--phos); font-family:var(--crt); font-size:26px; letter-spacing:1px}
+
+  /* ---- log ---- */
+  .log{display:flex; flex-direction:column; gap:4px; font-size:12.5px}
+  .log .e{display:flex; gap:12px; padding:5px 0; border-bottom:1px solid #0c160f}
+  .log .ts{color:var(--phos-dim); flex:0 0 76px}
+  .log .kind{flex:0 0 78px; text-transform:uppercase; font-size:10px; letter-spacing:1px}
+  .log .kind.cmd{color:var(--cyan)} .log .kind.phase{color:var(--phos)} .log .kind.gate{color:var(--amber)} .log .kind.sys{color:var(--ink-soft)} .log .kind.task{color:var(--ink-soft)}
+  .log .msg{color:var(--ink)}
+
+  .roster{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; margin-top:12px}
+  .ag{border:1px solid var(--line); border-radius:var(--radius); padding:8px 10px; background:#060b08}
+  .ag .an{color:var(--phos); font-size:12px} .ag .ar{color:var(--ink-soft); font-size:11px}
+
+  /* ---- command bar (signature) ---- */
+  .cmdbar{
+    position:fixed; left:0; right:0; bottom:0; z-index:40;
+    background:linear-gradient(180deg, rgba(5,8,6,.6), #05080e 30%, #04070a);
+    border-top:1px solid var(--line-bright); backdrop-filter:blur(4px);
+  }
+  .cmdbar .inner{max-width:1180px; margin:0 auto; padding:12px clamp(12px,3vw,26px); display:flex; align-items:center; gap:14px}
+  .cmdbar .lead{flex:1; min-width:0}
+  .cmdbar .eb{font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--phos-dim); margin-bottom:3px}
+  .cmdbar .line{display:flex; align-items:center; gap:9px; font-size:clamp(14px,2.4vw,18px); color:var(--phos); overflow:hidden}
+  .cmdbar .prompt{color:var(--phos-dim)}
+  .cmdbar .cmd{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cur{display:inline-block; width:9px; height:1.05em; background:var(--phos); margin-left:2px; vertical-align:-2px; animation:blink 1.1s steps(1) infinite; box-shadow:0 0 8px var(--phos)}
+  @keyframes blink{50%{opacity:0}}
+  .cmdbar .hint{font-size:11px; color:var(--ink-soft); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cmdbar .acts{display:flex; gap:8px; flex:0 0 auto}
+
+  .toast{position:fixed; bottom:96px; left:50%; transform:translateX(-50%) translateY(20px); z-index:60;
+    background:#04130c; border:1px solid var(--phos); color:var(--phos); padding:8px 16px; border-radius:var(--radius);
+    font-size:12px; letter-spacing:1px; text-transform:uppercase; opacity:0; transition:.25s; pointer-events:none; box-shadow:0 0 24px -6px var(--phos)}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  .hide{display:none !important}
+
+  @media (max-width:640px){
+    .titlebar .tt .hidesm{display:none}
+    .cmdbar .acts .lbl{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .crt-flicker{animation:none; display:none}
+    .cur{animation:none}
+    .pane{animation:none}
+  }
+</style>
+
+<div class="crt-scan"></div>
+<div class="crt-flicker"></div>
+<div class="crt-vignette"></div>
+
+<!-- BOOT -->
+<div id="boot">
+  <div class="term">
+    <pre class="glow">██╗  ██╗ █████╗ ██████╗ ██╗███╗   ███╗ ██████╗
+██║ ██╔╝██╔══██╗██╔══██╗██║████╗ ████║██╔═══██╗
+█████╔╝ ███████║██████╔╝██║██╔████╔██║██║   ██║
+██╔═██╗ ██╔══██║██╔══██╗██║██║╚██╔╝██║██║   ██║
+██║  ██╗██║  ██║██║  ██║██║██║ ╚═╝ ██║╚██████╔╝
+╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝ ╚═════╝  COCKPIT</pre>
+    <div class="ln" data-d="0">› phosphor warmup ............... ok</div>
+    <div class="ln" data-d="1">› mounting cockpit state ........ ok</div>
+    <div class="ln" data-d="2">› loading agent roster (22) ..... ok</div>
+    <div class="ln" data-d="3">› wiring /karimo command bus .... ok</div>
+    <div class="ln" data-d="4">› you are the architect — agents are the builders</div>
+    <div class="ln" data-d="5" style="color:var(--phos-bright)">› READY ▮</div>
+  </div>
+  <div class="skip">click to skip ▸</div>
+</div>
+
+<div class="wrap hide" id="app">
+  <div class="frame">
+    <div class="titlebar">
+      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="tt"><b>KARIMO</b> ❯ cockpit <span class="hidesm">— architect's command surface</span></div>
+      <div class="spacer"></div>
+      <button class="ghostbtn" id="demoBtn">load demo</button>
+      <button class="ghostbtn" id="resetBtn">reset</button>
+    </div>
+
+    <div class="status" id="status"><!-- rendered --></div>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="pipeline">Pipeline</button>
+      <button class="tab" data-tab="prds">PRDs &amp; Waves<span class="badge" id="taskBadge"></span></button>
+      <button class="tab" data-tab="config">Config</button>
+      <button class="tab" data-tab="log">Log</button>
+    </div>
+
+    <!-- PIPELINE -->
+    <section class="pane active" data-pane="pipeline">
+      <h2 class="section">Orchestration pipeline — click a step to set it as current</h2>
+      <div class="loops" id="loops"></div>
+      <div style="margin-top:18px">
+        <details>
+          <summary style="cursor:pointer; color:var(--phos-dim); font-size:11px; letter-spacing:1.5px; text-transform:uppercase">Agent roster — progressive disclosure (L0 abstracts)</summary>
+          <div class="roster" id="roster"></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- PRDS -->
+    <section class="pane" data-pane="prds">
+      <h2 class="section">PRDs, tasks &amp; waves</h2>
+      <div class="prd-bar">
+        <select id="prdSelect"></select>
+        <button class="btn sm ghost" id="newPrdBtn">+ New PRD</button>
+        <button class="btn sm ghost" id="addTaskBtn">+ Task</button>
+        <button class="btn sm ghost" id="delPrdBtn">Delete PRD</button>
+      </div>
+      <div id="taskForm" class="hide" style="border:1px solid var(--line-bright); border-radius:3px; padding:14px; margin-bottom:16px; background:#070d09">
+        <div class="row">
+          <div class="field" style="flex:3 1 260px"><label>Task title</label><input id="tTitle" placeholder="e.g. Port hero section to Next.js" /></div>
+          <div class="field" style="flex:0 1 110px"><label>Wave</label><select id="tWave"></select></div>
+          <div class="field" style="flex:0 1 150px"><label>Agent</label><select id="tAgent">
+            <option value="karimo-implementer">implementer (≤4)</option>
+            <option value="karimo-implementer-opus">implementer-opus (5+)</option>
+            <option value="karimo-pm">pm</option>
+            <option value="karimo-reviewer">reviewer</option>
+            <option value="karimo-investigator">investigator</option>
+          </select></div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:12px">
+          <button class="btn sm solid" id="saveTaskBtn">Add task</button>
+          <button class="btn sm ghost" id="cancelTaskBtn">Cancel</button>
+          <button class="btn sm ghost" id="addWaveBtn" style="margin-left:auto">+ Add wave</button>
+        </div>
+      </div>
+      <div id="wavesWrap"></div>
+    </section>
+
+    <!-- CONFIG -->
+    <section class="pane" data-pane="config">
+      <h2 class="section">Project config — feeds /karimo:configure → .karimo/config.yaml</h2>
+      <div class="row">
+        <div class="field" style="flex:2 1 240px"><label>Project name</label><input id="cName" placeholder="my-project" /></div>
+        <div class="field"><label>Framework</label><input id="cFramework" placeholder="Next.js 16" /></div>
+        <div class="field"><label>Language</label><input id="cLang" placeholder="TypeScript" /></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label>Build command</label><input id="cBuild" placeholder="npm run build" /></div>
+        <div class="field"><label>Test command</label><input id="cTest" placeholder="npm run test" /></div>
+        <div class="field"><label>Review provider</label><input id="cReview" placeholder="Greptile" /></div>
+        <div class="field" style="flex:0 1 120px"><label>Threshold</label><input id="cThresh" type="number" min="0" placeholder="5" /></div>
+      </div>
+      <div style="display:flex; gap:10px; margin:16px 0">
+        <button class="btn solid" id="saveCfgBtn">Save &amp; mark configured</button>
+        <button class="btn ghost" id="autoCfgBtn">Fill from demo stack</button>
+      </div>
+      <div class="eyebrow" style="margin-bottom:6px">.karimo/config.yaml — preview</div>
+      <div class="yaml" id="yamlPreview"></div>
+    </section>
+
+    <!-- LOG -->
+    <section class="pane" data-pane="log">
+      <h2 class="section">Session log</h2>
+      <div class="log" id="logList"></div>
+    </section>
+  </div>
+</div>
+
+<!-- COMMAND BAR -->
+<div class="cmdbar hide" id="cmdbar">
+  <div class="inner">
+    <div class="lead">
+      <div class="eb">Next command — paste into Claude Code</div>
+      <div class="line"><span class="prompt">karimo&nbsp;❯</span><span class="cmd glow" id="nextCmd">/karimo:configure --auto</span><span class="cur"></span></div>
+      <div class="hint" id="nextHint"></div>
+    </div>
+    <div class="acts">
+      <button class="btn solid" id="copyBtn">Copy <span class="lbl">cmd</span></button>
+      <button class="btn ghost" id="advanceBtn">Advance <span class="lbl">▸</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">copied</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- persistence ---------------- */
+  var KEY = "karimo:cockpit:v1";
+  var mem = null; // in-memory fallback
+  var hasStore = (typeof window !== "undefined" && window.storage && typeof window.storage.get === "function");
+
+  async function load(){
+    if(hasStore){
+      try{ var r = await window.storage.get(KEY, false); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }
+    return mem;
+  }
+  var saveT=null;
+  function save(){
+    if(saveT) clearTimeout(saveT);
+    saveT = setTimeout(async function(){
+      mem = state;
+      if(hasStore){ try{ await window.storage.set(KEY, JSON.stringify(state), false); }catch(e){} }
+    }, 120);
+  }
+
+  /* ---------------- model ---------------- */
+  var PHASES = [
+    {id:"configure", cmd:"/karimo:configure --auto", hint:"Auto-detect stack & write .karimo/config.yaml", loop:1},
+    {id:"research",  cmd:"/karimo:research",         hint:"Scan codebase + web → findings.md", loop:1},
+    {id:"plan",      cmd:"/karimo:plan",             hint:"5-round PRD interview → tasks, waves, deps", loop:2},
+    {id:"run",       cmd:"/karimo:run",              hint:"Generate task briefs & execute waves in worktrees", loop:3},
+    {id:"review",    cmd:"/karimo:run --resume",     hint:"Approve gate & continue to next wave", loop:3},
+    {id:"merged",    cmd:"/karimo:feedback",         hint:"Capture project-wide learnings", loop:3}
+  ];
+  var STEP_DESC = {
+    configure:"Detect framework, build/test cmds, review provider.",
+    research:"Investigator gathers external deps + internal patterns.",
+    plan:"Interviewer turns answers + findings into a structured PRD.",
+    run:"Brief-writer + PM scope tasks; implementers execute waves.",
+    review:"Reviewer validates against gate threshold between waves.",
+    merged:"Merge clean worktrees; feedback compounds into learnings."
+  };
+  var LOOPS = [
+    {n:1, name:"Foundation",     driver:"Human-led", phases:["configure","research","plan"]},
+    {n:2, name:"Decomposition",  driver:"Assisted",  phases:["run"]},
+    {n:3, name:"Orchestration",  driver:"Agent-led", phases:["review","merged"]}
+  ];
+  // Note: loop mapping is presentational; configure/research/plan = Foundation,
+  // task briefs = Decomposition, run/review/merge = Orchestration.
+  var LOOP_VIEW = [
+    {n:1, name:"Foundation",    driver:"Human-led", phases:["configure","research","plan"]},
+    {n:2, name:"Decomposition", driver:"Assisted",  phases:["run"]},
+    {n:3, name:"Orchestration", driver:"Agent-led", phases:["review","merged"]}
+  ];
+  var ROSTER = [
+    ["karimo-pm","orchestration & branch assertion"],
+    ["karimo-interviewer","runs the PRD interview"],
+    ["karimo-brief-writer","writes scoped task briefs"],
+    ["karimo-investigator","research: deps & patterns"],
+    ["karimo-implementer","code, complexity ≤4"],
+    ["karimo-implementer-opus","code, complexity 5+"],
+    ["karimo-reviewer","PRD & gate validation"]
+  ];
+  var STATUSES = ["pending","active","review","blocked","done"];
+
+  function uid(p){ return (p||"id")+"-"+Math.random().toString(36).slice(2,7); }
+  function fresh(){
+    return {
+      project:{name:"",framework:"",lang:"",build:"",test:"",review:"",thresh:"",configured:false,phase:"configure"},
+      prds:[], activePrd:null, log:[], gates:{} // gates[prdId][waveN]=true when passed
+    };
+  }
+
+  var state = fresh();
+
+  function logEvent(kind,msg){
+    var d=new Date(), t=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+    state.log.unshift({t:t, kind:kind, msg:msg});
+    if(state.log.length>200) state.log.pop();
+  }
+
+  function activePrd(){ return state.prds.find(function(p){return p.id===state.activePrd;}) || null; }
+  function waveNums(prd){
+    var n = Math.max(1, prd.waves||1);
+    var arr=[]; for(var i=1;i<=n;i++) arr.push(i); return arr;
+  }
+
+  /* ---------------- command logic ---------------- */
+  function nextStep(){
+    var p=state.project;
+    if(!p.configured) return PHASES[0];
+    // find current phase object, return the command for it
+    return PHASES.find(function(x){return x.id===p.phase;}) || PHASES[1];
+  }
+
+  /* ---------------- rendering ---------------- */
+  var $ = function(s,r){return (r||document).querySelector(s);};
+  var $$ = function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));};
+
+  function renderStatus(){
+    var p=state.project;
+    var phLabel = p.configured ? p.phase : "unconfigured";
+    var taskCount = state.prds.reduce(function(a,prd){return a+(prd.tasks?prd.tasks.length:0);},0);
+    var html = ""
+      + seg("Project", (p.name||"—"), p.name?"v proj":"v")
+      + seg("Stack", (p.framework||"—")+(p.lang?(" / "+p.lang):""))
+      + seg("Phase", '<span class="pill '+(p.configured?'':'warn')+'"><span class="led"></span>'+phLabel+'</span>',"raw")
+      + seg("PRDs", String(state.prds.length))
+      + seg("Tasks", String(taskCount))
+      + seg("Storage", hasStore?'persisted':'session-only', "v");
+    $("#status").innerHTML=html;
+  }
+  function seg(k,v,cls){
+    if(cls==="raw") return '<div class="seg"><span class="k">'+k+'</span>'+v+'</div>';
+    return '<div class="seg"><span class="k">'+k+'</span><span class="'+(cls||'v')+'">'+v+'</span></div>';
+  }
+
+  function renderPipeline(){
+    var p=state.project;
+    var curIdx = p.configured ? PHASES.findIndex(function(x){return x.id===p.phase;}) : 0;
+    var html="";
+    LOOP_VIEW.forEach(function(lp){
+      html += '<div class="loop"><div class="loop-head">'
+        + '<span class="num">'+lp.n+'</span>'
+        + '<span class="nm">Loop '+lp.n+' · '+lp.name+'</span>'
+        + '<span class="driver">'+lp.driver+'</span></div><div class="steps">';
+      lp.phases.forEach(function(phId){
+        var idx=PHASES.findIndex(function(x){return x.id===phId;});
+        var st = idx<curIdx ? "done" : (idx===curIdx ? "current" : "future");
+        var mk = st==="done"?"done":(st==="current"?"current":"queued");
+        html += '<div class="step '+st+'" data-step="'+phId+'">'
+          + '<div class="mk">'+mk+'</div>'
+          + '<div class="cmd">'+PHASES[idx].cmd.replace(" --auto","")+'</div>'
+          + '<div class="desc">'+STEP_DESC[phId]+'</div></div>';
+      });
+      html += '</div>';
+      if(lp.n===3){
+        html += '<div class="gate-row"><span class="gate-tag">⌖ gates</span>'
+          + '<span style="font-size:11px;color:var(--ink-soft)">Review checkpoints sit between waves — required for PRDs with 15+ tasks. Pass them in PRDs &amp; Waves, then run <b style="color:var(--phos)">--resume</b>.</span></div>';
+      }
+      html += '</div>';
+    });
+    $("#loops").innerHTML=html;
+
+    $("#roster").innerHTML = ROSTER.map(function(a){
+      return '<div class="ag"><div class="an">'+a[0]+'</div><div class="ar">'+a[1]+'</div></div>';
+    }).join("");
+  }
+
+  function renderPrdControls(){
+    var sel=$("#prdSelect");
+    if(!state.prds.length){
+      sel.innerHTML='<option value="">— no PRDs yet —</option>';
+    } else {
+      sel.innerHTML=state.prds.map(function(p){
+        return '<option value="'+p.id+'"'+(p.id===state.activePrd?' selected':'')+'>'+esc(p.name)+' · '+p.tasks.length+' tasks</option>';
+      }).join("");
+    }
+    var tw=$("#tWave");
+    var prd=activePrd();
+    if(prd){
+      tw.innerHTML=waveNums(prd).map(function(n){return '<option value="'+n+'">Wave '+n+'</option>';}).join("");
+    } else { tw.innerHTML='<option value="1">Wave 1</option>'; }
+  }
+
+  function renderWaves(){
+    var prd=activePrd();
+    var wrap=$("#wavesWrap");
+    if(!prd){
+      wrap.innerHTML='<div class="empty"><div class="big">no PRD loaded</div><div style="margin-top:8px">Create a PRD, then add tasks and group them into waves. Or hit <b style="color:var(--phos)">load demo</b> up top.</div></div>';
+      $("#taskBadge").textContent="";
+      return;
+    }
+    var nums=waveNums(prd);
+    var total=prd.tasks.length, done=prd.tasks.filter(function(t){return t.status==="done";}).length;
+    $("#taskBadge").textContent=total?(" "+done+"/"+total):"";
+    var html='<div class="waves">';
+    nums.forEach(function(n){
+      var tasks=prd.tasks.filter(function(t){return t.wave===n;});
+      var wdone=tasks.filter(function(t){return t.status==="done";}).length;
+      html+='<div class="wave"><div class="wave-head"><span class="wn">Wave '+n+'</span><span class="ct">'+wdone+'/'+tasks.length+'</span></div><div class="wave-body" data-wave="'+n+'">';
+      if(!tasks.length){ html+='<div style="color:var(--phos-dim);font-size:11px;padding:6px 2px">empty wave</div>'; }
+      tasks.forEach(function(t){
+        html+='<div class="task" data-task="'+t.id+'"><div class="t1">'
+          +'<span class="chip" data-s="'+t.status+'" data-act="cycle" title="click to cycle status">'+t.status+'</span>'
+          +'<span class="ttl">'+esc(t.title)+'</span>'
+          +'<span class="tid">'+t.id.slice(-3).toUpperCase()+'</span></div>'
+          +'<div class="agent">▸ '+t.agent+'</div></div>';
+      });
+      html+='</div></div>';
+      // gate between waves (not after last)
+      if(n<nums[nums.length-1]){
+        var passed = state.gates[prd.id] && state.gates[prd.id][n];
+        html+='<div class="gate"><div class="bar '+(passed?'passed':'')+'" data-gate="'+n+'" title="toggle review gate">'+(passed?'gate ✓':'gate ⌖')+'</div></div>';
+      }
+    });
+    html+='</div>';
+    wrap.innerHTML=html;
+  }
+
+  function renderConfig(){
+    var p=state.project;
+    $("#cName").value=p.name||""; $("#cFramework").value=p.framework||""; $("#cLang").value=p.lang||"";
+    $("#cBuild").value=p.build||""; $("#cTest").value=p.test||""; $("#cReview").value=p.review||""; $("#cThresh").value=p.thresh||"";
+    renderYaml();
+  }
+  function renderYaml(){
+    var p=state.project;
+    var lines=[
+      '<span class="cm"># auto-generated by /karimo:configure</span>',
+      '<span class="key">project</span>: <span class="val">'+(p.name||"unnamed")+'</span>',
+      '<span class="key">stack</span>:',
+      '  <span class="key">framework</span>: <span class="val">'+(p.framework||"—")+'</span>',
+      '  <span class="key">language</span>: <span class="val">'+(p.lang||"—")+'</span>',
+      '<span class="key">build</span>: <span class="val">'+(p.build||"npm run build")+'</span>',
+      '<span class="key">test</span>: <span class="val">'+(p.test||"npm run test")+'</span>',
+      '<span class="key">review</span>:',
+      '  <span class="key">provider</span>: <span class="val">'+(p.review||"none")+'</span>',
+      '  <span class="key">threshold</span>: <span class="val">'+(p.thresh!==""&&p.thresh!=null?p.thresh:5)+'</span>'
+    ];
+    $("#yamlPreview").innerHTML=lines.join("\n");
+  }
+
+  function renderLog(){
+    var l=$("#logList");
+    if(!state.log.length){ l.innerHTML='<div style="color:var(--phos-dim)">— no events yet —</div>'; return; }
+    l.innerHTML=state.log.map(function(e){
+      return '<div class="e"><span class="ts">'+e.t+'</span><span class="kind '+e.kind+'">'+e.kind+'</span><span class="msg">'+esc(e.msg)+'</span></div>';
+    }).join("");
+  }
+
+  function renderCmdBar(){
+    var s=nextStep();
+    $("#nextCmd").textContent=s.cmd;
+    $("#nextHint").textContent=s.hint;
+  }
+
+  function renderAll(){
+    renderStatus(); renderPipeline(); renderPrdControls(); renderWaves(); renderConfig(); renderLog(); renderCmdBar();
+  }
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+
+  /* ---------------- actions ---------------- */
+  function toast(msg){ var t=$("#toast"); t.textContent=msg||"copied"; t.classList.add("show"); setTimeout(function(){t.classList.remove("show");},1300); }
+
+  function setPhase(id){
+    state.project.phase=id;
+    state.project.configured=true;
+    logEvent("phase","phase → "+id);
+    save(); renderAll();
+  }
+
+  function advance(){
+    var p=state.project;
+    if(!p.configured){ // first advance = configured
+      p.configured=true; p.phase="configure";
+      // actually move to research as next
+      var i=PHASES.findIndex(function(x){return x.id==="configure";});
+      p.phase=PHASES[Math.min(i+1,PHASES.length-1)].id;
+      logEvent("phase","configured → "+p.phase);
+    } else {
+      var idx=PHASES.findIndex(function(x){return x.id===p.phase;});
+      if(idx<PHASES.length-1){ p.phase=PHASES[idx+1].id; logEvent("phase","advanced → "+p.phase); }
+      else { logEvent("phase","pipeline complete — at feedback"); }
+    }
+    save(); renderAll();
+  }
+
+  function copyNext(){
+    var cmd=$("#nextCmd").textContent;
+    copy(cmd); logEvent("cmd","copied  "+cmd); save(); renderLog();
+  }
+  function copy(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){toast("copied ✓");},function(){fallbackCopy(text);});
+    } else fallbackCopy(text);
+  }
+  function fallbackCopy(text){
+    var ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast("copied ✓"); }catch(e){ toast("copy failed"); }
+    document.body.removeChild(ta);
+  }
+
+  /* ---------------- wiring ---------------- */
+  function wire(){
+    // tabs
+    $$(".tab").forEach(function(t){
+      t.addEventListener("click",function(){
+        $$(".tab").forEach(function(x){x.classList.remove("active");});
+        $$(".pane").forEach(function(x){x.classList.remove("active");});
+        t.classList.add("active");
+        $('.pane[data-pane="'+t.dataset.tab+'"]').classList.add("active");
+      });
+    });
+
+    // pipeline step click → set current
+    $("#loops").addEventListener("click",function(e){
+      var step=e.target.closest(".step"); if(!step) return;
+      setPhase(step.dataset.step);
+    });
+
+    // command bar
+    $("#copyBtn").addEventListener("click",copyNext);
+    $("#advanceBtn").addEventListener("click",advance);
+
+    // config
+    ["cName","cFramework","cLang","cBuild","cTest","cReview","cThresh"].forEach(function(id){
+      $("#"+id).addEventListener("input",function(){
+        var p=state.project;
+        p.name=$("#cName").value.trim(); p.framework=$("#cFramework").value.trim(); p.lang=$("#cLang").value.trim();
+        p.build=$("#cBuild").value.trim(); p.test=$("#cTest").value.trim(); p.review=$("#cReview").value.trim(); p.thresh=$("#cThresh").value.trim();
+        renderYaml(); renderStatus(); save();
+      });
+    });
+    $("#saveCfgBtn").addEventListener("click",function(){
+      state.project.configured=true;
+      if(state.project.phase==="configure") state.project.phase="research";
+      logEvent("phase","config saved — marked configured");
+      save(); renderAll();
+      toast("config saved ✓");
+    });
+    $("#autoCfgBtn").addEventListener("click",function(){
+      var p=state.project;
+      p.name=p.name||"my-project"; p.framework="Next.js 16"; p.lang="TypeScript";
+      p.build="npm run build"; p.test="npm run test"; p.review="Greptile"; p.thresh="5";
+      logEvent("sys","filled demo stack");
+      save(); renderConfig(); renderStatus();
+    });
+
+    // PRD controls
+    $("#prdSelect").addEventListener("change",function(e){ state.activePrd=e.target.value||null; save(); renderWaves(); renderPrdControls(); });
+    $("#newPrdBtn").addEventListener("click",function(){
+      var name=prompt("PRD name (e.g. auth-system):"); if(!name) return;
+      var prd={id:uid("prd"),name:name.trim(),tasks:[],waves:1};
+      state.prds.push(prd); state.activePrd=prd.id;
+      logEvent("sys","created PRD: "+prd.name);
+      save(); renderPrdControls(); renderWaves(); renderStatus();
+    });
+    $("#delPrdBtn").addEventListener("click",function(){
+      var prd=activePrd(); if(!prd) return;
+      if(!confirm("Delete PRD \""+prd.name+"\" and its tasks?")) return;
+      state.prds=state.prds.filter(function(p){return p.id!==prd.id;});
+      delete state.gates[prd.id];
+      state.activePrd=state.prds.length?state.prds[0].id:null;
+      logEvent("sys","deleted PRD: "+prd.name);
+      save(); renderPrdControls(); renderWaves(); renderStatus();
+    });
+    $("#addTaskBtn").addEventListener("click",function(){
+      if(!activePrd()){ toast("create a PRD first"); return; }
+      $("#taskForm").classList.toggle("hide"); $("#tTitle").focus();
+    });
+    $("#cancelTaskBtn").addEventListener("click",function(){ $("#taskForm").classList.add("hide"); });
+    $("#addWaveBtn").addEventListener("click",function(){
+      var prd=activePrd(); if(!prd) return; prd.waves=(prd.waves||1)+1;
+      logEvent("sys","added Wave "+prd.waves+" to "+prd.name);
+      save(); renderPrdControls(); renderWaves();
+    });
+    $("#saveTaskBtn").addEventListener("click",function(){
+      var prd=activePrd(); if(!prd) return;
+      var title=$("#tTitle").value.trim(); if(!title){ toast("title required"); return; }
+      prd.tasks.push({id:uid("task"),title:title,wave:parseInt($("#tWave").value,10)||1,agent:$("#tAgent").value,status:"pending"});
+      $("#tTitle").value="";
+      logEvent("task","added task: "+title);
+      save(); renderWaves(); renderPrdControls(); renderStatus();
+    });
+
+    // task status cycle + gate toggle (delegated)
+    $("#wavesWrap").addEventListener("click",function(e){
+      var chip=e.target.closest('[data-act="cycle"]');
+      if(chip){
+        var taskEl=chip.closest(".task"); var prd=activePrd();
+        var t=prd.tasks.find(function(x){return x.id===taskEl.dataset.task;});
+        var i=STATUSES.indexOf(t.status); t.status=STATUSES[(i+1)%STATUSES.length];
+        logEvent("task",t.title+" → "+t.status);
+        save(); renderWaves(); renderStatus(); return;
+      }
+      var gate=e.target.closest("[data-gate]");
+      if(gate){
+        var prd2=activePrd(); var n=parseInt(gate.dataset.gate,10);
+        state.gates[prd2.id]=state.gates[prd2.id]||{};
+        state.gates[prd2.id][n]=!state.gates[prd2.id][n];
+        var passed=state.gates[prd2.id][n];
+        logEvent("gate","wave "+n+" gate "+(passed?"PASSED ✓":"reopened"));
+        if(passed && state.project.phase==="run"){ /* stay */ }
+        save(); renderWaves();
+      }
+    });
+
+    // header
+    $("#demoBtn").addEventListener("click",loadDemo);
+    $("#resetBtn").addEventListener("click",function(){
+      if(!confirm("Reset cockpit? This clears the project, PRDs, tasks and log.")) return;
+      state=fresh(); logEvent("sys","cockpit reset");
+      save(); renderAll();
+      toast("reset ✓");
+    });
+
+    // keyboard: cmd/ctrl+c-less quick copy with 'c'
+    document.addEventListener("keydown",function(e){
+      if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT") return;
+      if(e.key==="c"){ copyNext(); }
+    });
+  }
+
+  /* ---------------- demo ---------------- */
+  function loadDemo(){
+    state=fresh();
+    state.project={name:"framer-cms-migration",framework:"Next.js 16",lang:"TypeScript",
+      build:"npm run build",test:"npm run test",review:"Greptile",thresh:"5",configured:true,phase:"run"};
+    var titles=[
+      // wave 1
+      ["Scaffold Next.js 16 App Router",1,"karimo-implementer"],
+      ["Port global layout, fonts & theme tokens",1,"karimo-implementer"],
+      ["Set up MDX + content pipeline",1,"karimo-implementer-opus"],
+      ["Define CMS schema & types",1,"karimo-implementer"],
+      ["Image compression + next/image loader",1,"karimo-implementer-opus"],
+      // wave 2
+      ["Port hero section",2,"karimo-implementer"],
+      ["Port projects grid",2,"karimo-implementer"],
+      ["Port case-study template",2,"karimo-implementer"],
+      ["Port nav + footer",2,"karimo-implementer"],
+      ["Migrate 67 images to /public + manifest",2,"karimo-implementer"],
+      // wave 3
+      ["Wire dynamic routes from CMS",3,"karimo-implementer-opus"],
+      ["SEO: metadata, OG images, sitemap",3,"karimo-implementer"],
+      ["Redirects map from Framer URLs",3,"karimo-implementer"],
+      ["Analytics + consent",3,"karimo-implementer"],
+      ["Accessibility pass (focus, alt, contrast)",3,"karimo-reviewer"],
+      // wave 4
+      ["Lighthouse + perf budget",4,"karimo-implementer"],
+      ["Visual regression vs Framer baseline",4,"karimo-reviewer"],
+      ["Final content QA",4,"karimo-reviewer"],
+      ["Deploy preview + smoke test",4,"karimo-pm"],
+      ["Cut over DNS + archive Framer",4,"karimo-pm"]
+    ];
+    var prd={id:uid("prd"),name:"framer-cms-migration",tasks:[],waves:4};
+    titles.forEach(function(r,i){
+      var st="pending";
+      if(r[1]===1) st="done"; else if(r[1]===2) st = (i%2? "active":"done"); else if(r[1]===3 && i===10) st="review";
+      prd.tasks.push({id:uid("task"),title:r[0],wave:r[1],agent:r[2],status:st});
+    });
+    state.prds=[prd]; state.activePrd=prd.id;
+    state.gates[prd.id]={1:true,2:false,3:false};
+    logEvent("sys","loaded demo: framer-cms-migration (20 tasks / 4 waves)");
+    save(); renderAll();
+    toast("demo loaded ✓");
+  }
+
+  /* ---------------- boot ---------------- */
+  function revealApp(){
+    $("#boot").classList.add("hide");
+    $("#app").classList.remove("hide");
+    $("#cmdbar").classList.remove("hide");
+  }
+  function runBoot(){
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var lines=$$("#boot .ln");
+    if(reduce){ revealApp(); return; }
+    var i=0;
+    var iv=setInterval(function(){
+      if(i<lines.length){ lines[i].classList.add("on"); i++; }
+      else { clearInterval(iv); setTimeout(revealApp,420); }
+    },180);
+    $("#boot").addEventListener("click",function(){ clearInterval(iv); revealApp(); });
+  }
+
+  /* ---------------- init ---------------- */
+  (async function(){
+    wire();
+    var saved=await load();
+    if(saved && saved.project){ state=saved; state.gates=state.gates||{}; }
+    else { logEvent("sys","cockpit initialized — configure your project or load demo"); }
+    renderAll();
+    runBoot();
+  })();
+})();
+</script>

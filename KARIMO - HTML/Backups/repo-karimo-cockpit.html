@@ -1,0 +1,449 @@
+<!--
+  KARIMO CRT COMMAND COCKPIT — repo-intake engineering surface.
+  Populated ONLY from verified facts in KARIMO.zip (github.com/opensesh/KARIMO @ v9.10.1).
+  Read-only intake. No invented repo state. Panels without repo data are marked.
+  Self-contained, no network.
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KARIMO // CRT Command Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --bg:#0c0b0a; --bg-soft:#100e0c; --card:#161412; --card-2:#1c1916; --raise:#211d19;
+    --line:#272320; --line-2:#34302b;
+    --orange:#fb6315; --orange-bright:#ff8038; --orange-deep:#b9460e;
+    --text:#f4f2ee; --text-2:#a8a39b; --text-3:#6f6960;
+    --green:#46c26a; --amber:#e0a52e; --blue:#3f6cb0; --purple:#7a5aa8; --red:#e5574e;
+    --display:'Archivo',system-ui,sans-serif; --sans:'Geist','Inter',system-ui,sans-serif;
+    --mono:'Geist Mono',ui-monospace,'JetBrains Mono',Menlo,monospace; --pixel:'Silkscreen',var(--mono);
+    --r:14px; --r-sm:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .crt{position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.10) 3px 3px);opacity:.4;mix-blend-mode:multiply}
+  .vig{position:fixed;inset:0;pointer-events:none;z-index:60;background:radial-gradient(130% 100% at 50% 40%,rgba(0,0,0,0) 60%,rgba(0,0,0,.45) 100%)}
+  a{color:var(--orange);text-decoration:none} a:hover{text-decoration:underline}
+
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:500}
+  .mono{font-family:var(--mono)}
+
+  /* top bar */
+  .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:13px clamp(14px,3vw,30px);background:rgba(12,11,10,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .brand{font-family:var(--pixel);font-weight:700;color:var(--orange);font-size:18px;letter-spacing:.06em;text-shadow:2px 2px 0 var(--orange-deep)}
+  .brand-tag{font-family:var(--mono);font-size:11px;color:var(--text-3);letter-spacing:.16em;text-transform:uppercase}
+  .vpill{font-family:var(--mono);font-size:11px;color:var(--orange);border:1px solid var(--orange-deep);border-radius:999px;padding:3px 10px;letter-spacing:.04em}
+  .topbar .sp{flex:1}
+  .ghpill{display:inline-flex;align-items:center;gap:8px;background:#f4f2ee;color:#0c0b0a;font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:.06em;padding:8px 14px;border-radius:999px;text-transform:uppercase}
+  .ghpill:hover{background:#fff;text-decoration:none}
+
+  .shell{display:grid;grid-template-columns:74px 1fr;min-height:calc(100vh - 60px)}
+  .rail{position:sticky;top:60px;align-self:start;height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:14px 10px}
+  .rail-inner{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:999px;padding:9px 7px;background:var(--bg-soft)}
+  .rk{position:relative;display:flex;align-items:center;justify-content:center;width:42px;height:38px;border-radius:10px;color:var(--text-3);font-family:var(--mono);font-size:12px;cursor:pointer;background:transparent;border:0;transition:.15s;text-decoration:none}
+  .rk:hover{color:var(--text-2)} .rk.active{color:var(--orange)}
+  .rk.active::before{content:'';position:absolute;left:-7px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--orange);box-shadow:0 0 10px var(--orange)}
+  .rk .tip{position:absolute;left:50px;white-space:nowrap;background:var(--card-2);border:1px solid var(--line-2);color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:6px;opacity:0;pointer-events:none;transition:.14s;z-index:5}
+  .rk:hover .tip{opacity:1}
+
+  .main{padding:30px clamp(16px,4vw,52px) 90px;max-width:1150px}
+  .head .eyebrow{display:block;margin-bottom:10px}
+  .head h1{font-family:var(--display);font-weight:900;letter-spacing:-.03em;line-height:.96;font-size:clamp(34px,5.4vw,60px);margin:0}
+  .head .lead{color:var(--text-2);font-size:16px;max-width:70ch;margin-top:16px}
+
+  .intake{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:22px 0 8px;padding:12px 16px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--card)}
+  .intake .ok{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--green)}
+  .intake .ok i{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  .intake .src{font-family:var(--mono);font-size:12px;color:var(--text-3)}
+  .intake .src b{color:var(--text-2)}
+
+  /* stat strip */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:18px 0 8px}
+  .st{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:13px 15px}
+  .st .k{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
+  .st .v{font-family:var(--display);font-weight:800;font-size:24px;color:var(--orange);margin-top:6px;line-height:1}
+
+  section.panel{scroll-margin-top:72px;border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:20px 22px;margin-top:16px}
+  .ph{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .ph .num{font-family:var(--mono);font-size:11px;color:var(--text-3);letter-spacing:.1em}
+  .ph h2{font-family:var(--display);font-weight:800;font-size:20px;margin:0;letter-spacing:-.01em}
+  .ph .sp{flex:1}
+  .badge{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--text-3)}
+  .badge.ok{color:var(--green);border-color:var(--green)}
+  .badge.wait{color:var(--amber);border-color:var(--amber)}
+  .badge.na{color:var(--text-3);border-color:var(--line-2)}
+
+  .kv{display:grid;grid-template-columns:170px 1fr;gap:8px 16px;font-size:14px}
+  .kv .k{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);padding-top:2px}
+  .kv .v{color:var(--text)}
+  .kv .v .mono{color:var(--text-2)}
+  .note{color:var(--text-2);font-size:13.5px;line-height:1.55}
+  .note.warn{color:var(--amber)}
+  .dim{color:var(--text-3)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chip{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--bg-soft);border:1px solid var(--line-2);border-radius:7px;padding:6px 11px}
+  .chip b{color:var(--orange)}
+
+  /* command / agent tables */
+  table.t{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  table.t th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);font-weight:500;padding:10px 12px;border-bottom:1px solid var(--line)}
+  table.t td{padding:10px 12px;border-bottom:1px solid #15120f;color:var(--text-2);vertical-align:top}
+  table.t tr:last-child td{border-bottom:0}
+  table.t .cmd{font-family:var(--mono);color:var(--orange);white-space:nowrap}
+  table.t .an{font-family:var(--mono);color:var(--text)}
+  .mdl{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--line-2)}
+  .mdl.sonnet{color:var(--blue);border-color:var(--blue)} .mdl.opus{color:var(--purple);border-color:var(--purple)}
+
+  .agcat{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--orange);margin:16px 0 4px}
+
+  /* terminal */
+  .term{border:1px solid var(--line);border-radius:var(--r);background:#0a0908;overflow:hidden;margin-top:6px}
+  .term-bar{display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--line)}
+  .tl{display:flex;gap:6px}.tl i{width:11px;height:11px;border-radius:50%}.tl .r{background:#ff5f57}.tl .y{background:#febc2e}.tl .g{background:#28c840}
+  .term-bar .tt{font-family:var(--mono);font-size:12px;color:var(--text-3);margin-left:4px}
+  .term-body{padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre-wrap;color:var(--text-2)}
+  .term-body .pfx{color:var(--orange)} .term-body .cmd{color:var(--text)} .term-body .ok{color:var(--green)}
+  .copy{float:right;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);background:transparent;border:1px solid var(--line-2);border-radius:6px;padding:4px 9px;cursor:pointer}
+  .copy:hover{color:var(--orange);border-color:var(--orange-deep)}
+
+  ul.list{margin:6px 0 0;padding-left:0;list-style:none}
+  ul.list li{position:relative;padding:7px 0 7px 22px;border-bottom:1px solid #15120f;color:var(--text-2);font-size:13.5px}
+  ul.list li:last-child{border-bottom:0}
+  ul.list li::before{content:'▸';position:absolute;left:2px;color:var(--orange)}
+  ul.list li b{color:var(--text)}
+
+  /* gates */
+  .gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:6px}
+  .gate{border:1px solid var(--line-2);border-radius:10px;background:var(--bg-soft);padding:13px 14px}
+  .gate .gn{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text);display:flex;align-items:center;gap:8px}
+  .gate .gn i{width:8px;height:8px;border-radius:50%}
+  .gate .gd{color:var(--text-2);font-size:12.5px;margin-top:7px;line-height:1.45}
+  .gate .gs{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-top:9px;color:var(--amber)}
+  .gate i.req{background:var(--amber)} .gate i.opt{background:var(--text-3)}
+
+  .proof{columns:2;column-gap:24px;font-family:var(--mono);font-size:12px;color:var(--text-2)}
+  .proof div{padding:3px 0;break-inside:avoid}
+  .proof .y{color:var(--green)}
+
+  footer{margin-top:24px;padding:18px 22px;border-top:1px solid var(--line);color:var(--text-3);font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+
+  @media (max-width:820px){
+    .shell{grid-template-columns:1fr}
+    .rail{position:sticky;top:60px;height:auto;flex-direction:row;padding:8px 12px;z-index:25;background:var(--bg);border-bottom:1px solid var(--line)}
+    .rail-inner{flex-direction:row;overflow-x:auto;border-radius:12px}
+    .rk.active::before{left:8px;right:8px;top:auto;bottom:-3px;width:auto;height:3px}
+    .rk .tip{display:none}
+    .kv{grid-template-columns:1fr} .kv .k{padding-top:8px}
+    .proof{columns:1}
+  }
+</style>
+
+<div class="crt"></div>
+<div class="vig"></div>
+
+<div class="topbar">
+  <span class="brand">KARIMO</span><span class="brand-tag">// crt command cockpit</span>
+  <span class="vpill">v9.10.1</span>
+  <span class="sp"></span>
+  <a class="ghpill" href="https://github.com/opensesh/KARIMO" target="_blank" rel="noopener">⌥ GitHub ↗</a>
+</div>
+
+<div class="shell">
+  <nav class="rail">
+    <div class="rail-inner">
+      <a class="rk active" href="#identity" data-rk><span>01</span><span class="tip">Identity</span></a>
+      <a class="rk" href="#stack" data-rk><span>02</span><span class="tip">Stack</span></a>
+      <a class="rk" href="#entry" data-rk><span>03</span><span class="tip">Entry points</span></a>
+      <a class="rk" href="#components" data-rk><span>04</span><span class="tip">Components</span></a>
+      <a class="rk" href="#commands" data-rk><span>05</span><span class="tip">Commands</span></a>
+      <a class="rk" href="#build" data-rk><span>06</span><span class="tip">Build / Test</span></a>
+      <a class="rk" href="#integration" data-rk><span>07</span><span class="tip">Integrations</span></a>
+      <a class="rk" href="#tasks" data-rk><span>08</span><span class="tip">Open tasks</span></a>
+      <a class="rk" href="#risk" data-rk><span>09</span><span class="tip">Risk</span></a>
+      <a class="rk" href="#gates" data-rk><span>10</span><span class="tip">Gates</span></a>
+      <a class="rk" href="#proof" data-rk><span>11</span><span class="tip">Proof</span></a>
+      <a class="rk" href="#next" data-rk><span>12</span><span class="tip">Next actions</span></a>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="head">
+      <span class="eyebrow">Mission · Engineering execution harness</span>
+      <h1>Repo Intake Cockpit</h1>
+      <p class="lead">Read-only inspection of the connected repository. Every panel below is populated from verified repo facts. Panels without repo data are marked <span class="dim">Awaiting Repo Signal</span> or <span class="dim">N/A</span>. KARIMO inspects, summarizes, and proposes — it does not authorize, release, or bypass Control.</p>
+    </div>
+
+    <div class="intake">
+      <span class="ok"><i></i>Read-only intake complete</span>
+      <span class="src">Source: <b>KARIMO.zip</b> · github.com/opensesh/KARIMO · <b>v9.10.1</b> · Apache-2.0</span>
+    </div>
+
+    <div class="stats">
+      <div class="st"><div class="k">Agents</div><div class="v">22</div></div>
+      <div class="st"><div class="k">Commands</div><div class="v">11</div></div>
+      <div class="st"><div class="k">Skills</div><div class="v">8</div></div>
+      <div class="st"><div class="k">Templates</div><div class="v">22</div></div>
+      <div class="st"><div class="k">Docs</div><div class="v">21</div></div>
+      <div class="st"><div class="k">Test scripts</div><div class="v">9</div></div>
+    </div>
+
+    <!-- 01 IDENTITY -->
+    <section class="panel" id="identity">
+      <div class="ph"><span class="num">01</span><h2>Repository Identity</h2><span class="sp"></span><span class="badge ok">Verified</span></div>
+      <div class="kv">
+        <div class="k">Project</div><div class="v">KARIMO</div>
+        <div class="k">Type</div><div class="v">Claude Code plugin — PRD-driven autonomous agent orchestration harness</div>
+        <div class="k">Owner</div><div class="v">Open Session <span class="dim">(hello@opensesh.com)</span></div>
+        <div class="k">Repository</div><div class="v"><span class="mono">github.com/opensesh/KARIMO</span></div>
+        <div class="k">Version</div><div class="v"><span class="mono">9.10.1</span> <span class="dim">(MANIFEST.json + plugin.json + marketplace.json)</span></div>
+        <div class="k">License</div><div class="v">Apache 2.0</div>
+        <div class="k">Category</div><div class="v"><span class="mono">development-workflows</span></div>
+        <div class="k">Philosophy</div><div class="v">"You are the architect, agents are the builders."</div>
+      </div>
+    </section>
+
+    <!-- 02 STACK -->
+    <section class="panel" id="stack">
+      <div class="ph"><span class="num">02</span><h2>Framework / Stack</h2><span class="sp"></span><span class="badge ok">Verified</span></div>
+      <div class="kv">
+        <div class="k">Runtime target</div><div class="v">Claude Code (CLI / desktop / IDE). Not a standalone app.</div>
+        <div class="k">Languages</div><div class="v">Markdown (agent/command/skill/template defs), Bash (install · hooks · tests · scripts), JSON / YAML (config · manifests). 1 JS file (<span class="mono">.karimo/scripts/karimo-assets.js</span>).</div>
+        <div class="k">Package manager</div><div class="v"><span class="dim">None — no <span class="mono">package.json</span> / Node manifest at root.</span></div>
+        <div class="k">Config</div><div class="v"><span class="mono">.karimo/config.yaml</span> (generated by <span class="mono">/karimo:configure</span>; template <span class="mono">.karimo/templates/CONFIG_TEMPLATE.yaml</span>). <span class="mono">.claude/settings.json</span> present but empty <span class="mono">{}</span>.</div>
+        <div class="k">Plugin source</div><div class="v"><span class="mono">./.claude/plugins/karimo</span> (per marketplace.json)</div>
+      </div>
+    </section>
+
+    <!-- 03 ENTRY POINTS -->
+    <section class="panel" id="entry">
+      <div class="ph"><span class="num">03</span><h2>Active Entry Points</h2><span class="sp"></span><span class="badge ok">Verified</span></div>
+      <p class="note">For a Claude Code plugin, entry points are <b>slash commands</b> and the <b>marketplace/install path</b> — not web routes.</p>
+      <div class="chips">
+        <span class="chip">marketplace · <b>opensesh/KARIMO</b></span>
+        <span class="chip">plugin · <b>karimo@karimo</b></span>
+        <span class="chip mono"><b>.karimo/install.sh</b></span>
+        <span class="chip mono">remote-install.sh · update.sh · uninstall.sh</span>
+        <span class="chip">first command · <b>/karimo:research</b></span>
+      </div>
+      <p class="note" style="margin-top:14px"><span class="dim">Web app entry points (src/ · app/ · pages/) — <b>N/A</b>, none present in repo.</span></p>
+    </section>
+
+    <!-- 04 COMPONENTS -->
+    <section class="panel" id="components">
+      <div class="ph"><span class="num">04</span><h2>Component Map — Agents &amp; Skills</h2><span class="sp"></span><span class="badge ok">Verified · 22 + 8</span></div>
+      <p class="note"><span class="dim">React/route components — <b>N/A</b> (plugin repo). KARIMO's "components" are agents and skills.</span></p>
+
+      <div class="agcat">Coordination</div>
+      <table class="t"><thead><tr><th>Agent</th><th>Model</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td class="an">karimo-pm</td><td><span class="mdl sonnet">sonnet</span></td><td>Coordinates execution — git workflows, spawns workers, manages PRs</td></tr>
+        <tr><td class="an">karimo-pm-reviewer</td><td><span class="mdl sonnet">sonnet</span></td><td>Review coordination — validates task PRs, manages revision loops</td></tr>
+        <tr><td class="an">karimo-pm-finalizer</td><td><span class="mdl sonnet">sonnet</span></td><td>Post-execution cleanup &amp; metrics generation</td></tr>
+        <tr><td class="an">karimo-interviewer</td><td><span class="mdl sonnet">sonnet</span></td><td>Structured PRD (/plan) or feedback interviews</td></tr>
+        <tr><td class="an">karimo-investigator</td><td><span class="mdl sonnet">sonnet</span></td><td>Scans codebase for patterns &amp; config (/configure)</td></tr>
+        <tr><td class="an">karimo-reviewer</td><td><span class="mdl opus">opus</span></td><td>Validates completed PRDs, generates dependency graph</td></tr>
+      </tbody></table>
+
+      <div class="agcat">Research</div>
+      <table class="t"><tbody>
+        <tr><td class="an">karimo-researcher</td><td><span class="mdl sonnet">sonnet</span></td><td>Two-phase research (internal + external) (/research)</td></tr>
+        <tr><td class="an">karimo-refiner</td><td><span class="mdl sonnet">sonnet</span></td><td>Processes annotations, follow-up research</td></tr>
+      </tbody></table>
+
+      <div class="agcat">Briefs</div>
+      <table class="t"><tbody>
+        <tr><td class="an">karimo-brief-writer</td><td><span class="mdl sonnet">sonnet</span></td><td>Generates self-contained task briefs from PRD</td></tr>
+        <tr><td class="an">karimo-brief-reviewer</td><td><span class="mdl sonnet">sonnet</span></td><td>Pre-execution validation of briefs vs codebase</td></tr>
+        <tr><td class="an">karimo-brief-corrector</td><td><span class="mdl sonnet">sonnet</span></td><td>Applies fixes to briefs / PRD</td></tr>
+      </tbody></table>
+
+      <div class="agcat">Implementation / Test / Docs</div>
+      <table class="t"><tbody>
+        <tr><td class="an">karimo-implementer</td><td><span class="mdl sonnet">sonnet</span></td><td>Coding tasks, complexity 1–4</td></tr>
+        <tr><td class="an">karimo-implementer-opus</td><td><span class="mdl opus">opus</span></td><td>Complex multi-file coding, complexity 5+</td></tr>
+        <tr><td class="an">karimo-tester</td><td><span class="mdl sonnet">sonnet</span></td><td>Tests &amp; coverage, complexity 1–4</td></tr>
+        <tr><td class="an">karimo-tester-opus</td><td><span class="mdl opus">opus</span></td><td>Complex test coordination, complexity 5+</td></tr>
+        <tr><td class="an">karimo-documenter</td><td><span class="mdl sonnet">sonnet</span></td><td>Documentation, complexity 1–4</td></tr>
+        <tr><td class="an">karimo-documenter-opus</td><td><span class="mdl opus">opus</span></td><td>Complex documentation, complexity 5+</td></tr>
+      </tbody></table>
+
+      <div class="agcat">Integration / Review / Feedback</div>
+      <table class="t"><tbody>
+        <tr><td class="an">karimo-review-architect</td><td><span class="mdl sonnet">sonnet</span></td><td>Code-level integration / merge quality <span class="dim">(overview notes deprecated v5.0)</span></td></tr>
+        <tr><td class="an">karimo-coverage-reviewer</td><td><span class="mdl sonnet">sonnet</span></td><td>Coverage-gap analysis, PR comments (/merge)</td></tr>
+        <tr><td class="an">karimo-feedback-auditor</td><td><span class="mdl sonnet">sonnet</span></td><td>Investigates feedback issues (/feedback)</td></tr>
+        <tr><td class="an">karimo-greptile-remediator</td><td><span class="mdl sonnet">sonnet</span></td><td>Fixes Greptile review findings in batch</td></tr>
+        <tr><td class="an">karimo-greptile-rules-writer</td><td><span class="mdl sonnet">sonnet</span></td><td>Generates project-specific Greptile rules</td></tr>
+      </tbody></table>
+      <p class="note warn" style="margin-top:14px">⚠ <b>Doc gap:</b> <span class="mono">.claude/agents.overview.md</span> tables document 18 agents; 4 files are undocumented there — greptile-remediator, greptile-rules-writer, pm-finalizer, pm-reviewer. Distribution by frontmatter: <b>18 sonnet · 4 opus</b>.</p>
+
+      <div class="agcat">Skills (8)</div>
+      <div class="chips">
+        <span class="chip mono">bash-utilities</span><span class="chip mono">code-standards</span>
+        <span class="chip mono">doc-standards</span><span class="chip mono">external-research</span>
+        <span class="chip mono">firecrawl-web-tools</span><span class="chip mono">orchestration-inference</span>
+        <span class="chip mono">research-methods</span><span class="chip mono">testing-standards</span>
+      </div>
+    </section>
+
+    <!-- 05 COMMANDS -->
+    <section class="panel" id="commands">
+      <div class="ph"><span class="num">05</span><h2>Command Console — 11 slash commands</h2><span class="sp"></span><span class="badge ok">Verified</span></div>
+      <table class="t"><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td class="cmd">/karimo:research "feature"</td><td>Start here — create PRD folder + run research</td></tr>
+        <tr><td class="cmd">/karimo:plan --prd {slug}</td><td>Interactive PRD creation (~10 min)</td></tr>
+        <tr><td class="cmd">/karimo:run --prd {slug}</td><td>Brief generation → review → execution in waves</td></tr>
+        <tr><td class="cmd">/karimo:merge --prd {slug}</td><td>Final consolidated PR to main</td></tr>
+        <tr><td class="cmd">/karimo:dashboard</td><td>Monitor progress / velocity</td></tr>
+        <tr><td class="cmd">/karimo:feedback</td><td>Capture project-wide learnings</td></tr>
+        <tr><td class="cmd">/karimo:doctor</td><td>Diagnose installation / config issues</td></tr>
+        <tr><td class="cmd">/karimo:greptile-review</td><td>Greptile-based automated PR review</td></tr>
+        <tr><td class="cmd">/karimo:configure</td><td>Detect stack → write .karimo/config.yaml</td></tr>
+        <tr><td class="cmd">/karimo:help</td><td>Command help</td></tr>
+        <tr><td class="cmd">/karimo:update</td><td>Update installed plugin files</td></tr>
+      </tbody></table>
+      <p class="note" style="margin-top:12px">Workflow loops: <b>Research → Plan</b> (Foundation) · <b>Tasks → Review</b> (Decomposition) · <b>Orchestrate → Inspect</b> (Orchestration).</p>
+    </section>
+
+    <!-- 06 BUILD/TEST -->
+    <section class="panel" id="build">
+      <div class="ph"><span class="num">06</span><h2>Build / Test Commands</h2><span class="sp"></span><span class="badge ok">Verified</span></div>
+      <p class="note"><span class="dim">No npm build — this is a plugin, not a compiled app.</span> Tests are Bash suites; CI validates the manifest and install.</p>
+      <div class="term">
+        <div class="term-bar"><span class="tl"><i class="r"></i><i class="y"></i><i class="g"></i></span><span class="tt">verified commands</span><button class="copy" data-copy='bash tests/run-all-tests.sh'>copy</button></div>
+        <div class="term-body"><span class="pfx">$ </span><span class="cmd">bash tests/run-all-tests.sh</span>          <span class="dim"># unit + integration + verify</span>
+<span class="pfx">$ </span><span class="cmd">bash .karimo/install.sh ./my-project</span>   <span class="dim"># legacy installer</span>
+<span class="pfx">$ </span><span class="cmd">bash .karimo/scripts/release.sh</span></div>
+      </div>
+      <div class="chips" style="margin-top:12px">
+        <span class="chip">CI · <b>.github/workflows/karimo-ci.yml</b></span>
+        <span class="chip">CI · <b>karimo-test-install.yml</b></span>
+        <span class="chip">tests/ · <b>unit · integration · verify</b> (9 scripts)</span>
+        <span class="chip">report · <b>tests/TEST_REPORT.md</b></span>
+      </div>
+    </section>
+
+    <!-- 07 INTEGRATION -->
+    <section class="panel" id="integration">
+      <div class="ph"><span class="num">07</span><h2>Integration Surface</h2><span class="sp"></span><span class="badge ok">Verified</span></div>
+      <ul class="list">
+        <li><b>Greptile</b> — optional automated code review (Phase 2, ~$30/mo). Providers at <span class="mono">.karimo/providers/greptile</span>; agents greptile-remediator + greptile-rules-writer.</li>
+        <li><b>Claude Code Review</b> — alternative review provider (<span class="mono">.karimo/providers/code-review</span>).</li>
+        <li><b>Firecrawl MCP</b> — optional deeper web research (skill <span class="mono">firecrawl-web-tools</span>). Any MCP server can be integrated.</li>
+        <li><b>GitHub CLI</b> (<span class="mono">gh</span>) — required dependency for PR workflows.</li>
+        <li><b>Lifecycle hooks</b> — example shell hooks for external systems (Slack, Jira, etc.): <span class="mono">pre-task · post-task · on-failure</span>.</li>
+      </ul>
+    </section>
+
+    <!-- 08 OPEN TASKS -->
+    <section class="panel" id="tasks">
+      <div class="ph"><span class="num">08</span><h2>Open Engineering Tasks</h2><span class="sp"></span><span class="badge wait">Repo-evidenced</span></div>
+      <p class="note dim">Only gaps backed by repo evidence are listed. No invented tasks.</p>
+      <ul class="list">
+        <li><b>Version badge drift</b> — <span class="mono">README.md</span> badge reads <span class="mono">v9.9.1</span> while MANIFEST/plugin/marketplace = <span class="mono">9.10.1</span>. Sync the badge.</li>
+        <li><b>Agent overview incomplete</b> — <span class="mono">agents.overview.md</span> documents 18 of 22 agents; add greptile-remediator, greptile-rules-writer, pm-finalizer, pm-reviewer.</li>
+        <li><b>Deprecated agent still present</b> — <span class="mono">review-architect</span> is flagged deprecated (v5.0) in the overview but the file remains; confirm intended status.</li>
+        <li><b>Large MANIFEST deprecation list</b> — many legacy command paths under <span class="mono">deprecated.commands</span>; confirm migration is complete and prune if safe.</li>
+      </ul>
+    </section>
+
+    <!-- 09 RISK -->
+    <section class="panel" id="risk">
+      <div class="ph"><span class="num">09</span><h2>Risk / Missing Config</h2><span class="sp"></span><span class="badge wait">Review</span></div>
+      <ul class="list">
+        <li><b>Remote install executes shell</b> — <span class="mono">install.sh</span> / <span class="mono">remote-install.sh</span> run code on the host. Standard hygiene: review before running. <span class="dim">(security gate)</span></li>
+        <li><b>Empty settings.json</b> — <span class="mono">.claude/settings.json</span> is <span class="mono">{}</span>; permissions/MCP allowlists not set here. <span class="dim">Awaiting Repo Signal.</span></li>
+        <li><b>No .env.example</b> — Greptile (Phase 2) needs an API key supplied at the integration layer; no example committed (acceptable for a plugin, flagged for visibility).</li>
+        <li><b>Concurrency caution</b> — README notes simultaneous feature-branch worktree runs can conflict; prefer one orchestration at a time.</li>
+      </ul>
+    </section>
+
+    <!-- 10 GATES -->
+    <section class="panel" id="gates">
+      <div class="ph"><span class="num">10</span><h2>Approval Gates — Control</h2><span class="sp"></span><span class="badge wait">Not yet approved</span></div>
+      <p class="note">KARIMO may inspect and propose. Any change below requires the mapped Control gate before action.</p>
+      <div class="gates">
+        <div class="gate"><div class="gn"><i class="req"></i>Engineering</div><div class="gd">Code or architecture changes (agents, scripts, install, manifest).</div><div class="gs">Required · pending</div></div>
+        <div class="gate"><div class="gn"><i class="req"></i>Security</div><div class="gd">Install scripts, dependencies, secrets, Greptile/GitHub credentials, external services.</div><div class="gs">Required · pending</div></div>
+        <div class="gate"><div class="gn"><i class="req"></i>Design</div><div class="gd">Cockpit UI / visual system / design tokens.</div><div class="gs">Required · pending</div></div>
+        <div class="gate"><div class="gn"><i class="opt"></i>Product</div><div class="gd">Plugin behavior / workflow changes.</div><div class="gs" style="color:var(--text-3)">As-needed</div></div>
+        <div class="gate"><div class="gn"><i class="req"></i>Release</div><div class="gd">Version bump, marketplace publish, deploy.</div><div class="gs">Required · pending</div></div>
+        <div class="gate"><div class="gn"><i class="req"></i>Command</div><div class="gd">Public claims, vendor commitment, roadmap, major architecture.</div><div class="gs">Required · pending</div></div>
+      </div>
+    </section>
+
+    <!-- 11 PROOF -->
+    <section class="panel" id="proof">
+      <div class="ph"><span class="num">11</span><h2>Proof Artifacts — files inspected</h2><span class="sp"></span><span class="badge ok">17 sources</span></div>
+      <div class="proof">
+        <div><span class="y">✓</span> README.md</div>
+        <div><span class="y">✓</span> CLAUDE.md</div>
+        <div><span class="y">✓</span> .claude-plugin/marketplace.json</div>
+        <div><span class="y">✓</span> .claude/plugins/karimo/.claude-plugin/plugin.json</div>
+        <div><span class="y">✓</span> .claude/settings.json</div>
+        <div><span class="y">✓</span> .claude/agents.overview.md</div>
+        <div><span class="y">✓</span> .karimo/MANIFEST.json</div>
+        <div><span class="y">✓</span> .karimo/VERSION</div>
+        <div><span class="y">✓</span> .karimo/install.sh</div>
+        <div><span class="y">✓</span> .karimo/templates/ (22)</div>
+        <div><span class="y">✓</span> .karimo/hooks/ (3 examples)</div>
+        <div><span class="y">✓</span> .karimo/providers/ (greptile · code-review)</div>
+        <div><span class="y">✓</span> .karimo/scripts/ (6)</div>
+        <div><span class="y">✓</span> .github/workflows/ (2)</div>
+        <div><span class="y">✓</span> tests/ (unit · integration · verify)</div>
+        <div><span class="y">✓</span> 22 agent frontmatters</div>
+        <div><span class="y">✓</span> 11 command files</div>
+      </div>
+    </section>
+
+    <!-- 12 NEXT -->
+    <section class="panel" id="next">
+      <div class="ph"><span class="num">12</span><h2>Next Executable Actions</h2><span class="sp"></span><span class="badge ok">Repo-backed</span></div>
+      <ul class="list">
+        <li><b>Install into your real project</b> (in Claude Code, not here): <span class="mono">/plugin marketplace add opensesh/KARIMO</span> → <span class="mono">/plugin install karimo@karimo</span> → <span class="mono">/reload-plugins</span>.</li>
+        <li><b>Generate config:</b> run <span class="mono">/karimo:configure</span> to write <span class="mono">.karimo/config.yaml</span>.</li>
+        <li><b>First feature:</b> <span class="mono">/karimo:research "feature" → /karimo:plan → /karimo:run → /karimo:merge</span>.</li>
+        <li><b>Fix the version badge</b> in README (9.9.1 → 9.10.1) — small, engineering-gate.</li>
+        <li><b>Complete agents.overview.md</b> for the 4 undocumented agents.</li>
+        <li><b>Drive it visually</b> with the companion <span class="mono">karimo-cockpit.html</span> — note its roster needs syncing to these 22 real agents (proposed change below).</li>
+      </ul>
+      <div class="term" style="margin-top:14px">
+        <div class="term-bar"><span class="tl"><i class="r"></i><i class="y"></i><i class="g"></i></span><span class="tt">install · marketplace</span><button class="copy" data-copy='/plugin marketplace add opensesh/KARIMO'>copy</button></div>
+        <div class="term-body"><span class="pfx">$ </span><span class="cmd">/plugin marketplace add opensesh/KARIMO</span>
+<span class="pfx">$ </span><span class="cmd">/plugin install karimo@karimo</span>
+<span class="pfx">$ </span><span class="cmd">/reload-plugins</span>
+<span class="ok">→ KARIMO v9.10.1 ready · run /karimo:research "feature"</span></div>
+      </div>
+    </section>
+
+    <footer>
+      KARIMO CRT Command Cockpit · standalone · read-only intake · all data verified from KARIMO.zip (v9.10.1).
+      Generated output is provisional until reviewed. KARIMO inspects and proposes; Control authorizes.
+    </footer>
+  </main>
+</div>
+
+<script>
+(function(){
+  // rail active state on scroll
+  var sections=[].slice.call(document.querySelectorAll('section.panel'));
+  var rks=[].slice.call(document.querySelectorAll('[data-rk]'));
+  function onScroll(){
+    var y=window.scrollY+90, cur=sections[0];
+    sections.forEach(function(s){ if(s.offsetTop<=y) cur=s; });
+    rks.forEach(function(r){ r.classList.toggle('active', r.getAttribute('href')==='#'+cur.id); });
+  }
+  window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+  // copy buttons
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-copy]'); if(!b) return;
+    var t=b.getAttribute('data-copy');
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);}
+    var old=b.textContent; b.textContent='copied ✓'; setTimeout(function(){b.textContent=old;},1200);
+  });
+})();
+</script>

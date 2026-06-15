@@ -1,0 +1,835 @@
+<!--
+  KARIMO COCKPIT — command surface for driving KARIMO sessions in Claude Code.
+  Styled to match Open Session's KARIMO overview (karimo-overview.vercel.app).
+  Self-contained. State persists via window.storage with in-memory fallback.
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KARIMO // COCKPIT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --bg:#0c0b0a;
+    --bg-soft:#100e0c;
+    --card:#161412;
+    --card-2:#1c1916;
+    --raise:#211d19;
+    --line:#272320;
+    --line-2:#34302b;
+    --orange:#fb6315;
+    --orange-bright:#ff8038;
+    --orange-deep:#b9460e;
+    --text:#f4f2ee;
+    --text-2:#a8a39b;
+    --text-3:#6f6960;
+    --green:#46c26a;
+    --green-dim:#2c6e42;
+    --amber:#e0a52e;
+    --blue:#3f6cb0;
+    --purple:#7a5aa8;
+    --red:#e5574e;
+    --ag-agents:#b9772f;
+    --ag-templates:#7e5e70;
+    --ag-skills:#6e7a54;
+    --ag-commands:#4e627a;
+    --ag-hooks:#5c574f;
+    --display:'Archivo', 'Geist', system-ui, sans-serif;
+    --sans:'Geist', 'Inter', system-ui, -apple-system, sans-serif;
+    --mono:'Geist Mono', ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
+    --pixel:'Silkscreen', var(--mono);
+    --r:14px;
+    --r-sm:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  /* faint CRT overlay, very subtle — honors the overview's crt video */
+  .crt{position:fixed; inset:0; pointer-events:none; z-index:60;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.10) 3px 3px);
+    opacity:.4; mix-blend-mode:multiply}
+  .vig{position:fixed; inset:0; pointer-events:none; z-index:60;
+    background:radial-gradient(130% 100% at 50% 40%, rgba(0,0,0,0) 60%, rgba(0,0,0,.45) 100%)}
+
+  a{color:inherit}
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--orange); font-weight:500}
+  .display{font-family:var(--display); font-weight:900; letter-spacing:-.03em; line-height:.95; color:var(--text)}
+  .mono{font-family:var(--mono)}
+
+  /* ---------- boot ---------- */
+  #boot{position:fixed; inset:0; z-index:90; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px; cursor:pointer; padding:24px}
+  #boot .logo{font-family:var(--pixel); font-weight:700; color:var(--orange); font-size:clamp(34px,9vw,80px); letter-spacing:.04em; text-shadow:4px 4px 0 var(--orange-deep)}
+  #boot .term{font-family:var(--mono); font-size:13px; color:var(--text-2); width:min(440px,100%)}
+  #boot .ln{opacity:0} #boot .ln.on{opacity:1}
+  #boot .ln b{color:var(--orange)}
+  #boot .skip{position:absolute; bottom:22px; right:26px; font-family:var(--mono); font-size:11px; color:var(--text-3); letter-spacing:.1em}
+
+  /* ---------- shell ---------- */
+  .topbar{position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:14px;
+    padding:14px clamp(14px,3vw,30px); background:rgba(12,11,10,.86); backdrop-filter:blur(8px); border-bottom:1px solid var(--line)}
+  .brand{font-family:var(--pixel); font-weight:700; color:var(--orange); font-size:18px; letter-spacing:.06em; text-shadow:2px 2px 0 var(--orange-deep)}
+  .brand-tag{font-family:var(--mono); font-size:11px; color:var(--text-3); letter-spacing:.18em; text-transform:uppercase; margin-left:2px}
+  .topbar .sp{flex:1}
+  .ghpill{display:inline-flex; align-items:center; gap:8px; background:#f4f2ee; color:#0c0b0a; font-family:var(--mono); font-weight:700; font-size:12px; letter-spacing:.08em; padding:8px 14px; border-radius:999px; text-decoration:none; text-transform:uppercase}
+  .ghpill:hover{background:#fff}
+  .iconbtn{display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:999px; border:1px solid var(--line-2); color:var(--text-2); background:transparent; cursor:pointer}
+  .iconbtn:hover{color:var(--orange); border-color:var(--orange-deep)}
+
+  .shell{display:grid; grid-template-columns:74px 1fr; min-height:calc(100vh - 64px)}
+  /* left rail */
+  .rail{position:sticky; top:64px; align-self:start; height:calc(100vh - 64px); display:flex; align-items:center; justify-content:center; padding:14px 10px}
+  .rail-inner{display:flex; flex-direction:column; gap:4px; align-items:stretch; border:1px solid var(--line); border-radius:999px; padding:10px 7px; background:var(--bg-soft)}
+  .rk{position:relative; display:flex; align-items:center; justify-content:center; width:42px; height:40px; border-radius:10px; color:var(--text-3); font-family:var(--mono); font-size:13px; cursor:pointer; background:transparent; border:0; transition:.15s}
+  .rk:hover{color:var(--text-2)}
+  .rk.active{color:var(--orange)}
+  .rk.active::before{content:''; position:absolute; left:-7px; top:9px; bottom:9px; width:3px; border-radius:3px; background:var(--orange); box-shadow:0 0 10px var(--orange)}
+  .rk svg{width:18px; height:18px}
+  .rk .tip{position:absolute; left:52px; white-space:nowrap; background:var(--card-2); border:1px solid var(--line-2); color:var(--text); font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; padding:4px 9px; border-radius:6px; opacity:0; pointer-events:none; transform:translateX(-4px); transition:.14s; z-index:5}
+  .rk:hover .tip{opacity:1; transform:translateX(0)}
+  .rail .div{height:1px; background:var(--line); margin:4px 6px}
+
+  .main{padding:36px clamp(16px,4vw,56px) 150px; max-width:1180px}
+  .pane{display:none; animation:fade .26s ease}
+  .pane.active{display:block}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+
+  .head{margin-bottom:30px}
+  .head .display{font-size:clamp(38px,6.4vw,76px); margin:10px 0 0}
+  .head .lead{color:var(--text-2); font-size:18px; line-height:1.55; max-width:64ch; margin-top:18px}
+
+  /* ---------- status cards ---------- */
+  .grid{display:grid; gap:14px}
+  .stat-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:26px}
+  .stat{border:1px solid var(--line); border-radius:var(--r); background:var(--card); padding:16px 18px}
+  .stat .k{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-3)}
+  .stat .v{font-family:var(--display); font-weight:800; font-size:26px; color:var(--text); margin-top:8px; letter-spacing:-.01em; line-height:1}
+  .stat .v.orange{color:var(--orange)}
+  .stat .v.small{font-size:18px; font-family:var(--mono); font-weight:500; letter-spacing:0}
+  .stat .led{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--orange); box-shadow:0 0 8px var(--orange); margin-right:7px; vertical-align:1px}
+
+  /* big next-command hero */
+  .nexthero{border:1px solid var(--line-2); border-radius:var(--r); background:linear-gradient(180deg,var(--card-2),var(--card)); padding:22px 24px; margin-bottom:28px}
+  .nexthero .eyebrow{margin-bottom:12px}
+  .nexthero .line{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .nexthero code{font-family:var(--mono); font-weight:500; font-size:clamp(18px,3vw,26px); color:var(--orange); background:transparent}
+  .nexthero .prompt{color:var(--orange-deep)}
+  .cur{display:inline-block; width:10px; height:1.05em; background:var(--orange); vertical-align:-2px; margin-left:2px; animation:blink 1.1s steps(1) infinite; box-shadow:0 0 8px var(--orange)}
+  @keyframes blink{50%{opacity:0}}
+  .nexthero .hint{color:var(--text-2); font-size:14px; margin-top:12px}
+  .nexthero .acts{display:flex; gap:10px; margin-top:18px; flex-wrap:wrap}
+
+  .btn{font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; font-weight:500; cursor:pointer;
+    padding:10px 16px; border-radius:999px; border:1px solid var(--line-2); color:var(--text-2); background:transparent; transition:.15s}
+  .btn:hover{color:var(--text); border-color:var(--text-3)}
+  .btn.solid{background:var(--orange); color:#1a0d04; border-color:var(--orange); font-weight:700}
+  .btn.solid:hover{background:var(--orange-bright); color:#1a0d04}
+  .btn.sm{padding:7px 12px; font-size:11px}
+
+  h2.sec{font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--text-3); margin:34px 0 16px; font-weight:500}
+
+  /* ---------- harness bento ---------- */
+  .bento{display:grid; grid-template-columns:1.4fr 1fr 1fr; grid-template-rows:auto auto; gap:12px}
+  .tile{border-radius:var(--r); padding:16px; min-height:120px; display:flex; flex-direction:column; justify-content:space-between; position:relative; overflow:hidden; border:1px solid rgba(255,255,255,.06)}
+  .tile .tn{font-family:var(--mono); font-weight:700; font-size:14px; color:#fff; letter-spacing:.02em}
+  .tile .tc{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:rgba(255,255,255,.72)}
+  .tile.agents{background:var(--ag-agents); grid-row:span 2}
+  .tile.templates{background:var(--ag-templates)}
+  .tile.skills{background:var(--ag-skills)}
+  .tile.commands{background:var(--ag-commands)}
+  .tile.hooks{background:var(--ag-hooks)}
+  .tile .gly{position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:46px; opacity:.18; color:#fff; font-family:var(--mono)}
+  .legend{display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3)}
+  .legend span{display:inline-flex; align-items:center; gap:7px}
+  .legend i{width:9px; height:9px; border-radius:50%; display:inline-block}
+
+  /* ---------- pipeline / loops ---------- */
+  .loopwrap{display:flex; align-items:stretch; gap:10px; flex-wrap:wrap}
+  .flank{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-width:88px; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-3); cursor:pointer; padding:8px}
+  .flank:hover{color:var(--text-2)}
+  .flank.done{color:var(--orange)}
+  .loop{flex:1 1 240px; border:1px solid var(--line); border-radius:var(--r); background:var(--card); padding:18px; cursor:pointer; transition:.16s}
+  .loop:hover{border-color:var(--line-2)}
+  .loop.active{border-color:var(--orange); box-shadow:0 0 0 1px var(--orange) inset, 0 0 40px -18px var(--orange)}
+  .loop.dim{opacity:.42}
+  .loop .ln{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--text-3); text-align:center}
+  .loop.active .ln{color:var(--orange)}
+  .loop .nm{font-family:var(--display); font-weight:800; font-size:24px; text-align:center; margin:6px 0 14px; color:var(--text)}
+  .loop .steps{display:flex; align-items:center; justify-content:center; gap:10px}
+  .loop .stp{border:1px solid var(--line-2); border-radius:8px; padding:9px 14px; font-family:var(--mono); font-size:13px; letter-spacing:.04em; color:var(--text); background:var(--bg-soft)}
+  .loop.dim .stp{color:var(--text-3); border-color:var(--line)}
+  .loop .arr{color:var(--text-3)}
+  .loop .ret{height:14px; border-left:1px solid var(--line-2); border-bottom:1px solid var(--line-2); border-right:1px solid var(--line-2); border-radius:0 0 8px 8px; margin:10px 28px 0; opacity:.6}
+  .arrgap{display:flex; align-items:center; color:var(--text-3); font-family:var(--mono); padding:0 2px}
+
+  .detail{display:grid; grid-template-columns:1fr 1.1fr 1fr; gap:14px; margin-top:18px}
+  .panel{border:1px solid var(--line); border-radius:var(--r); background:var(--card); padding:18px}
+  .panel .dl{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--orange); margin-bottom:10px}
+  .panel p{color:var(--text-2); font-size:13.5px; line-height:1.5; margin:0}
+  .io{display:flex; gap:12px; margin-top:14px}
+  .io .iol{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); flex:0 0 52px; padding-top:1px}
+  .io .iov{color:var(--text); font-size:13px}
+
+  .term{border:1px solid var(--line); border-radius:var(--r); background:#0a0908; overflow:hidden}
+  .term-bar{display:flex; align-items:center; gap:8px; padding:9px 13px; border-bottom:1px solid var(--line)}
+  .tl{display:flex; gap:6px} .tl i{width:11px; height:11px; border-radius:50%}
+  .tl .r{background:#ff5f57} .tl .y{background:#febc2e} .tl .g{background:#28c840}
+  .term-bar .tt{font-family:var(--mono); font-size:12px; color:var(--text-3); margin-left:4px}
+  .term-body{padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.7; white-space:pre-wrap; color:var(--text-2)}
+  .term-body .o{color:var(--orange)} .term-body .g{color:var(--green)} .term-body .d{color:var(--text-3)}
+  .term-body .cur{height:1em}
+
+  .acc{display:flex; flex-direction:column; gap:8px}
+  .acci{border:1px solid var(--line); border-radius:10px; background:var(--card); padding:14px 15px}
+  .acci.open{border-color:var(--line-2); background:var(--card-2)}
+  .acci .ah{display:flex; align-items:center; gap:8px; cursor:pointer}
+  .acci .at{font-weight:600; color:var(--text); font-size:14px}
+  .acci .ac{font-family:var(--mono); font-size:12px; color:var(--orange)}
+  .acci .ax{margin-left:auto; color:var(--text-3)}
+  .acci p{margin:10px 0 0; color:var(--text-2); font-size:13px; line-height:1.5; display:none}
+  .acci.open p{display:block}
+
+  /* ---------- PRDs / waves ---------- */
+  .prdbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:8px}
+  .prdbar select{flex:1 1 240px; min-width:200px}
+  input,select{font-family:var(--mono); font-size:13px; color:var(--text); background:var(--bg-soft); border:1px solid var(--line-2); border-radius:var(--r-sm); padding:9px 11px; outline:none}
+  input:focus,select:focus{border-color:var(--orange)}
+  ::placeholder{color:var(--text-3)}
+  .slugnote{font-family:var(--mono); font-size:11px; color:var(--text-3); margin:6px 2px 18px}
+  .slugnote b{color:var(--orange)}
+
+  .waves{border:1px solid var(--line); border-radius:var(--r); background:var(--card); padding:20px}
+  .waverow{display:grid; grid-template-columns:84px 1fr; align-items:center; gap:14px; padding:9px 0}
+  .waverow .wl{font-family:var(--mono); font-size:13px; color:var(--text-2)}
+  .segs{display:flex; gap:8px; flex-wrap:wrap}
+  .seg{position:relative; min-width:84px; flex:1 1 84px; max-width:150px; height:34px; border-radius:7px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-family:var(--mono); font-size:10px; color:#0c0b0a; font-weight:700; letter-spacing:.02em; transition:.14s; border:1px solid transparent}
+  .seg .tlab{position:absolute; bottom:-15px; font-family:var(--mono); font-size:9px; color:var(--text-3); font-weight:400; letter-spacing:0}
+  .waverow{margin-bottom:8px}
+  .gateline{display:grid; grid-template-columns:84px 1fr; gap:14px; align-items:center; padding:10px 0}
+  .gateline .gl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-3); text-align:right}
+  .gatepill{justify-self:start; display:inline-flex; align-items:center; gap:8px; border:1px dashed var(--amber); color:var(--amber); font-family:var(--mono); font-size:11px; padding:5px 14px; border-radius:999px; cursor:pointer; background:transparent}
+  .gatepill.passed{border-style:solid; border-color:var(--green-dim); color:var(--green)}
+  .dashes{flex:1; border-top:1px dashed var(--line-2)}
+
+  .empty{border:1px dashed var(--line-2); border-radius:var(--r); padding:34px; text-align:center; color:var(--text-2)}
+  .empty .big{font-family:var(--display); font-weight:800; font-size:24px; color:var(--text); margin-bottom:8px}
+
+  .taskform{border:1px solid var(--line-2); border-radius:var(--r); background:var(--card); padding:16px; margin:16px 0}
+  .row{display:flex; flex-wrap:wrap; gap:12px}
+  .field{display:flex; flex-direction:column; gap:6px; flex:1 1 160px}
+  .field label{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3)}
+  .legend2{display:flex; flex-wrap:wrap; gap:14px; margin-top:24px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3)}
+  .legend2 span{display:inline-flex; align-items:center; gap:6px}
+  .legend2 i{width:14px; height:9px; border-radius:3px; display:inline-block}
+
+  /* ---------- config ---------- */
+  .cfgwrap{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .yamlcard{border:1px solid var(--line); border-radius:var(--r); background:#0a0908; overflow:hidden; align-self:start}
+  .yamlcard .term-body{color:var(--text-2)}
+  .yamlcard .key{color:var(--blue)} .yamlcard .val{color:var(--orange)} .yamlcard .cm{color:var(--text-3)}
+
+  /* ---------- log ---------- */
+  .log{border:1px solid var(--line); border-radius:var(--r); background:#0a0908; padding:6px 16px; font-family:var(--mono); font-size:12.5px}
+  .log .e{display:flex; gap:14px; padding:7px 0; border-bottom:1px solid #15120f}
+  .log .e:last-child{border-bottom:0}
+  .log .ts{color:var(--text-3); flex:0 0 70px}
+  .log .kd{flex:0 0 70px; text-transform:uppercase; font-size:10px; letter-spacing:.1em}
+  .log .kd.cmd{color:var(--blue)} .log .kd.phase{color:var(--orange)} .log .kd.gate{color:var(--amber)} .log .kd.task{color:var(--text-2)} .log .kd.sys{color:var(--text-3)}
+  .log .msg{color:var(--text)}
+
+  .roster{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; margin-top:12px}
+  .ag{border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:var(--card)}
+  .ag .an{font-family:var(--mono); color:var(--orange); font-size:12px}
+  .ag .ar{color:var(--text-2); font-size:12px; margin-top:2px}
+
+  /* ---------- command bar ---------- */
+  .cmdbar{position:fixed; left:0; right:0; bottom:0; z-index:40; background:linear-gradient(180deg,rgba(12,11,10,.4),var(--bg) 36%); border-top:1px solid var(--line-2); backdrop-filter:blur(8px)}
+  .cmdbar .inner{max-width:1180px; margin:0 auto; padding:13px clamp(14px,4vw,56px); padding-left:calc(74px + clamp(16px,4vw,56px)); display:flex; align-items:center; gap:16px}
+  .cmdbar .lead{flex:1; min-width:0}
+  .cmdbar .eb{font-family:var(--mono); font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--text-3); margin-bottom:4px}
+  .cmdbar .line{display:flex; align-items:center; gap:9px; overflow:hidden}
+  .cmdbar code{font-family:var(--mono); font-size:clamp(15px,2.4vw,20px); color:var(--orange); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cmdbar .prompt{color:var(--orange-deep)}
+  .cmdbar .hint{font-family:var(--sans); font-size:12px; color:var(--text-2); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cmdbar .acts{display:flex; gap:9px; flex:0 0 auto}
+
+  .toast{position:fixed; bottom:108px; left:50%; transform:translateX(-50%) translateY(16px); z-index:70; background:var(--orange); color:#1a0d04; font-family:var(--mono); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; padding:9px 18px; border-radius:999px; opacity:0; transition:.24s; pointer-events:none}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  .hide{display:none !important}
+
+  @media (max-width:880px){
+    .shell{grid-template-columns:1fr}
+    .rail{position:sticky; top:64px; height:auto; flex-direction:row; padding:8px 12px; z-index:25; background:var(--bg); border-bottom:1px solid var(--line)}
+    .rail-inner{flex-direction:row; border-radius:14px; overflow-x:auto}
+    .rk.active::before{left:9px; right:9px; top:auto; bottom:-3px; width:auto; height:3px}
+    .rk .tip{display:none}
+    .detail,.cfgwrap{grid-template-columns:1fr}
+    .bento{grid-template-columns:1fr 1fr}
+    .tile.agents{grid-row:auto}
+    .cmdbar .inner{padding-left:clamp(14px,4vw,56px)}
+    .cmdbar .acts .lbl{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){ .cur{animation:none} .pane{animation:none} }
+</style>
+
+<div class="crt"></div>
+<div class="vig"></div>
+
+<!-- BOOT -->
+<div id="boot">
+  <div class="logo">KARIMO</div>
+  <div class="term">
+    <div class="ln" data-d="0">› mounting cockpit state ......... <b>ok</b></div>
+    <div class="ln" data-d="1">› loading agent roster (22) ...... <b>ok</b></div>
+    <div class="ln" data-d="2">› wiring /karimo command bus ..... <b>ok</b></div>
+    <div class="ln" data-d="3"><b>› you are the architect — agents are the builders</b></div>
+  </div>
+  <div class="skip">click to skip ▸</div>
+</div>
+
+<div class="hide" id="app">
+  <!-- top bar -->
+  <div class="topbar">
+    <span class="brand">KARIMO</span><span class="brand-tag">// cockpit</span>
+    <span class="sp"></span>
+    <button class="iconbtn" id="demoBtn" title="Load demo project">◍</button>
+    <a class="ghpill" href="https://github.com/opensesh/KARIMO" target="_blank" rel="noopener">⌥ GitHub ↗</a>
+  </div>
+
+  <div class="shell">
+    <!-- left rail -->
+    <nav class="rail">
+      <div class="rail-inner" id="rail">
+        <button class="rk active" data-nav="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 10l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="tip">Mission Control</span></button>
+        <div class="div"></div>
+        <button class="rk" data-nav="pipeline">01<span class="tip">Pipeline</span></button>
+        <button class="rk" data-nav="prds">02<span class="tip">PRDs &amp; Waves</span></button>
+        <button class="rk" data-nav="config">03<span class="tip">Config</span></button>
+        <button class="rk" data-nav="log">04<span class="tip">Session Log</span></button>
+        <div class="div"></div>
+        <button class="rk" data-nav="reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h6"/></svg><span class="tip">Reset</span></button>
+      </div>
+    </nav>
+
+    <main class="main">
+      <!-- HOME -->
+      <section class="pane active" data-pane="home">
+        <div class="head">
+          <div class="eyebrow">Mission Control</div>
+          <h1 class="display">Drive the Harness</h1>
+          <p class="lead">Track your project config, PRDs, tasks, waves and review gates — and copy the exact <span style="color:var(--orange)">/karimo</span> command to paste into Claude Code next.</p>
+        </div>
+        <div class="stat-row" id="statRow"></div>
+        <div class="nexthero">
+          <div class="eyebrow">Next command — paste into Claude Code</div>
+          <div class="line"><span class="prompt mono" style="font-size:clamp(18px,3vw,26px)">karimo&nbsp;❯</span><code id="homeCmd">/karimo:configure --auto</code><span class="cur"></span></div>
+          <div class="hint" id="homeHint"></div>
+          <div class="acts">
+            <button class="btn solid" id="homeCopy">Copy command</button>
+            <button class="btn" id="homeAdvance">Mark done ▸</button>
+            <button class="btn" data-jump="pipeline">Open pipeline</button>
+          </div>
+        </div>
+
+        <h2 class="sec">The Harness</h2>
+        <div class="bento">
+          <div class="tile agents"><div class="tc">agents/</div><span class="gly">▢▢</span><div class="tn">22 files</div></div>
+          <div class="tile templates"><div class="tc">templates/</div><span class="gly">▤</span><div class="tn">18 files</div></div>
+          <div class="tile skills"><div class="tc">skills/</div><span class="gly">✦</span><div class="tn">14 files</div></div>
+          <div class="tile commands"><div class="tc">commands/</div><span class="gly">{/}</span><div class="tn">11 files</div></div>
+          <div class="tile hooks"><div class="tc">hooks/</div><span class="gly">⚙</span><div class="tn">9 files</div></div>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--ag-agents)"></i>Agents</span>
+          <span><i style="background:var(--ag-skills)"></i>Skills</span>
+          <span><i style="background:var(--ag-commands)"></i>Commands</span>
+          <span><i style="background:var(--ag-templates)"></i>Templates</span>
+          <span><i style="background:var(--ag-hooks)"></i>Hooks/Config</span>
+        </div>
+      </section>
+
+      <!-- PIPELINE -->
+      <section class="pane" data-pane="pipeline">
+        <div class="head">
+          <div class="eyebrow">Solution</div>
+          <h1 class="display">Agent Orchestration</h1>
+          <p class="lead">Three loops, click a step to set it as your current phase. The active loop's commands and terminal show below.</p>
+        </div>
+        <div class="loopwrap" id="loopwrap"></div>
+        <div class="detail" id="loopDetail"></div>
+        <h2 class="sec">Agent roster — L0 abstracts</h2>
+        <div class="roster" id="roster"></div>
+      </section>
+
+      <!-- PRDS -->
+      <section class="pane" data-pane="prds">
+        <div class="head">
+          <div class="eyebrow">Encoding</div>
+          <h1 class="display">PRDs &amp; Waves</h1>
+          <p class="lead">Decompose a PRD into tasks, group them into dependency-ordered waves, and pass review gates between waves.</p>
+        </div>
+        <div class="prdbar">
+          <select id="prdSelect"></select>
+          <button class="btn sm" id="newPrdBtn">+ New PRD</button>
+          <button class="btn sm" id="addTaskBtn">+ Task</button>
+          <button class="btn sm" id="addWaveBtn">+ Wave</button>
+          <button class="btn sm" id="delPrdBtn">Delete</button>
+        </div>
+        <div class="slugnote" id="slugNote"></div>
+        <div id="taskForm" class="taskform hide">
+          <div class="row">
+            <div class="field" style="flex:3 1 240px"><label>Task title</label><input id="tTitle" placeholder="Port hero section to Next.js" /></div>
+            <div class="field" style="flex:0 1 100px"><label>Wave</label><select id="tWave"></select></div>
+            <div class="field" style="flex:0 1 170px"><label>Agent</label><select id="tAgent"></select></div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:12px">
+            <button class="btn sm solid" id="saveTaskBtn">Add task</button>
+            <button class="btn sm" id="cancelTaskBtn">Cancel</button>
+          </div>
+        </div>
+        <div id="wavesWrap"></div>
+        <div class="legend2">
+          <span><i style="background:var(--green)"></i>done</span>
+          <span><i style="background:var(--amber)"></i>active</span>
+          <span><i style="background:transparent;border:1px solid var(--amber)"></i>review</span>
+          <span><i style="background:transparent;border:1px solid var(--red)"></i>blocked</span>
+          <span><i style="background:var(--line-2)"></i>pending</span>
+        </div>
+      </section>
+
+      <!-- CONFIG -->
+      <section class="pane" data-pane="config">
+        <div class="head">
+          <div class="eyebrow">Configure</div>
+          <h1 class="display">Project Config</h1>
+          <p class="lead">Feeds <span style="color:var(--orange)">/karimo:configure</span> → the <span class="mono">.karimo/config.yaml</span> single source of truth.</p>
+        </div>
+        <div class="cfgwrap">
+          <div>
+            <div class="row">
+              <div class="field" style="flex:2 1 220px"><label>Project name</label><input id="cName" placeholder="my-project" /></div>
+              <div class="field"><label>Framework</label><input id="cFramework" placeholder="Next.js 16" /></div>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <div class="field"><label>Language</label><input id="cLang" placeholder="TypeScript" /></div>
+              <div class="field"><label>Build</label><input id="cBuild" placeholder="npm run build" /></div>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <div class="field"><label>Test</label><input id="cTest" placeholder="npm run test" /></div>
+              <div class="field"><label>Review provider</label><input id="cReview" placeholder="Greptile" /></div>
+              <div class="field" style="flex:0 1 110px"><label>Threshold</label><input id="cThresh" type="number" min="0" placeholder="5" /></div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:18px">
+              <button class="btn solid" id="saveCfgBtn">Save &amp; mark configured</button>
+              <button class="btn" id="autoCfgBtn">Fill demo stack</button>
+            </div>
+          </div>
+          <div class="yamlcard term">
+            <div class="term-bar"><span class="tl"><i class="r"></i><i class="y"></i><i class="g"></i></span><span class="tt">.karimo/config.yaml</span></div>
+            <div class="term-body" id="yamlPreview"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LOG -->
+      <section class="pane" data-pane="log">
+        <div class="head">
+          <div class="eyebrow">Logs</div>
+          <h1 class="display">Session Log</h1>
+        </div>
+        <div class="log" id="logList"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- command bar -->
+<div class="cmdbar hide" id="cmdbar">
+  <div class="inner">
+    <div class="lead">
+      <div class="eb">Next — paste into Claude Code</div>
+      <div class="line"><span class="prompt mono">karimo&nbsp;❯</span><code id="nextCmd">/karimo:configure --auto</code><span class="cur"></span></div>
+      <div class="hint" id="nextHint"></div>
+    </div>
+    <div class="acts">
+      <button class="btn solid" id="copyBtn">Copy <span class="lbl">cmd</span></button>
+      <button class="btn" id="advanceBtn">Advance <span class="lbl">▸</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">copied</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(s,r){return (r||document).querySelector(s);};
+  var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));};
+
+  /* ---------- persistence ---------- */
+  var KEY="karimo:cockpit:v2";
+  var mem=null;
+  var hasStore=(typeof window!=="undefined" && window.storage && typeof window.storage.get==="function");
+  async function load(){ if(hasStore){ try{var r=await window.storage.get(KEY,false); return r?JSON.parse(r.value):null;}catch(e){return null;} } return mem; }
+  var saveT=null;
+  function save(){ if(saveT)clearTimeout(saveT); saveT=setTimeout(async function(){ mem=state; if(hasStore){ try{await window.storage.set(KEY,JSON.stringify(state),false);}catch(e){} } },120); }
+
+  /* ---------- model ---------- */
+  var PHASES=["configure","research","plan","run","review","merge"];
+  var WAVE_COLORS=["#46c26a","#e0a52e","#3f6cb0","#7a5aa8","#b9772f","#7e5e70"];
+  var STATUSES=["pending","active","review","blocked","done"];
+  var AGENTS=[
+    ["karimo-pm","orchestration & branch assertion"],
+    ["karimo-interviewer","runs the PRD interview"],
+    ["karimo-investigator","research: deps & patterns"],
+    ["karimo-brief-writer","writes scoped task briefs"],
+    ["karimo-brief-reviewer","challenges briefs for risk"],
+    ["karimo-implementer","code · complexity ≤4 (Sonnet)"],
+    ["karimo-implementer-opus","code · complexity 5+ (Opus)"],
+    ["karimo-reviewer","PRD & gate validation"],
+    ["karimo-review-architect","code review pass"],
+    ["karimo-greptile-remediator","auto-fixes review findings"],
+    ["karimo-wave-planner","maps tasks into waves"],
+    ["karimo-gate-keeper","enforces gate thresholds"],
+    ["karimo-merge-captain","final merge to main"],
+    ["karimo-tester","runs build & tests"],
+    ["karimo-worktree-manager","isolates task worktrees"],
+    ["karimo-research-curator","curates findings.md"],
+    ["karimo-feedback-collector","captures learnings"],
+    ["karimo-learning-applier","applies prior learnings"],
+    ["karimo-dependency-mapper","builds the dep graph"],
+    ["karimo-config-doctor","diagnoses config issues"],
+    ["karimo-dashboard-reporter","status & reporting"],
+    ["karimo-router","routes tasks to agents"]
+  ];
+  var LOOPS=[
+    {n:1,name:"Foundation",driver:"Human-led",pre:"configure",steps:[["RESEARCH","research"],["PLAN","plan"]],
+      term:{title:"/karimo:configure",lines:[
+        ["$ ","claude /karimo:configure --auto",""],
+        ["→ ","Detected: Next.js 16, React 19, TypeScript","o"],
+        ["→ ","Build: npm run build  Test: npm run test","o"],
+        ["→ ","Review provider: Greptile (threshold: 5)","o"],
+        ["→ ","Config saved to .karimo/config.yaml","o"],
+        ["$ ","","cur"]
+      ]},
+      io:["Your codebase + your answers to the PRD interview","Approved PRD with task breakdown, wave plan, and dependencies"],
+      acc:[["Configure","/karimo:configure","Auto-detect project settings and write .karimo/config.yaml — the single source of truth."],
+           ["Research","/karimo:research","Scan your codebase and the web for patterns, conventions and external context."],
+           ["Plan","/karimo:plan","A 5-round PRD interview that produces tasks, waves and dependencies."]]},
+    {n:2,name:"Decomposition",driver:"Claude-led",pre:null,steps:[["TASKS","run"],["REVIEW","run"]],
+      term:{title:"/karimo:run",lines:[
+        ["$ ","claude /karimo:run --prd auth-system",""],
+        ["→ ","Phase 1: Generating 12 task briefs...","o"],
+        ["→ ","Phase 2: Auto-reviewing briefs (0 critical)","o"],
+        ["→ ","PM Agent spawned. Wave 1: 3 parallel worktrees","o"],
+        ["→ ","task-1a: PR #12 → feature/auth-system","o"],
+        ["$ ","","cur"]
+      ]},
+      io:["Approved PRD with tasks.yaml and execution_plan.yaml","Validated task briefs ready for execution"],
+      acc:[["Run","/karimo:run","Generates briefs, validates them, then configures execution — including gate placement for 15+ task PRDs."],
+           ["Review","Claude + User","Brief-reviewer challenges each brief for risks and conflicts before any code is written."]]},
+    {n:3,name:"Orchestration",driver:"Agent-led",pre:null,steps:[["ORCHESTRATE","run"],["INSPECT","review"]],post:"merge",
+      term:{title:"PM Agent",lines:[
+        ["$ ","→ PM Agent coordinating execution...",""],
+        ["→ ","Wave 1: 3/3 passed. Gate: auto-passed ","g"],
+        ["→ ","Wave 2: 4 tasks dispatched in parallel","o"],
+        ["→ ","All 4 waves complete. Ready for merge.","o"],
+        ["$ ","","cur"]
+      ]},
+      io:["Validated briefs + execution_plan.yaml + gate config","Single consolidated PR to main with gate outcomes tracked"],
+      acc:[["Orchestrate","PM Agent","The PM agent sequences waves and pauses at gates for human review, then resumes."],
+           ["Worktrees","Isolation","Each task runs in its own git worktree with a clean window — parallel or dependent."],
+           ["Merge","/karimo:merge","After all gates pass, the feature branch merges to main with a clean audit trail."]]}
+  ];
+  var activeLoop=1;
+
+  function uid(p){return (p||"id")+"-"+Math.random().toString(36).slice(2,7);}
+  function slugify(s){return String(s||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")||"feature";}
+  function fresh(){return {project:{name:"",framework:"",lang:"",build:"",test:"",review:"",thresh:"",configured:false,phase:"configure"},prds:[],activePrd:null,gates:{},log:[]};}
+  var state=fresh();
+
+  function logEvent(kind,msg){var d=new Date(),t=[d.getHours(),d.getMinutes(),d.getSeconds()].map(function(x){return String(x).padStart(2,"0");}).join(":");state.log.unshift({t:t,kind:kind,msg:msg});if(state.log.length>200)state.log.pop();}
+  function activePrd(){return state.prds.find(function(p){return p.id===state.activePrd;})||null;}
+  function activeSlug(){var p=activePrd();return p?slugify(p.name):slugify(state.project.name);}
+  function gatePending(){var p=activePrd();if(!p)return false;var w=p.waves||1;for(var n=1;n<w;n++){if(!(state.gates[p.id]&&state.gates[p.id][n]))return true;}return false;}
+
+  /* ---------- command logic ---------- */
+  function nextStep(){
+    var p=state.project,slug=activeSlug();
+    if(!p.configured) return {cmd:"/karimo:configure --auto",hint:"Auto-detect stack & write .karimo/config.yaml"};
+    switch(p.phase){
+      case "configure": return {cmd:'/karimo:research "'+slug+'"',hint:"Scan codebase + web → findings.md"};
+      case "research":  return {cmd:"/karimo:plan --prd "+slug,hint:"5-round PRD interview → tasks, waves, deps"};
+      case "plan":      return {cmd:"/karimo:run --prd "+slug,hint:"Generate task briefs & execute waves in worktrees"};
+      case "run":       return gatePending()?{cmd:"/karimo:run --prd "+slug+" --resume",hint:"Continue past the review gate"}:{cmd:"/karimo:merge --prd "+slug,hint:"All gates passed — open the PR to main"};
+      case "review":    return {cmd:"/karimo:run --prd "+slug+" --resume",hint:"Approve gate & continue to next wave"};
+      case "merge":     return {cmd:"/karimo:feedback",hint:"Capture project-wide learnings"};
+    }
+    return {cmd:"/karimo:configure --auto",hint:""};
+  }
+
+  /* ---------- renders ---------- */
+  function renderStatus(){
+    var p=state.project;
+    var tasks=state.prds.reduce(function(a,x){return a+x.tasks.length;},0);
+    var done=state.prds.reduce(function(a,x){return a+x.tasks.filter(function(t){return t.status==="done";}).length;},0);
+    var ph=p.configured?p.phase:"unconfigured";
+    $("#statRow").innerHTML=
+      stat("Project",p.name||"—",p.name?"orange":"")+
+      stat("Stack",(p.framework||"—"),"small")+
+      stat("Phase",'<span class="led"></span>'+ph,"small")+
+      stat("PRDs",String(state.prds.length),"")+
+      stat("Tasks",(done+" / "+tasks),"")+
+      stat("Storage",hasStore?"persisted":"session","small");
+  }
+  function stat(k,v,cls){return '<div class="stat"><div class="k">'+k+'</div><div class="v '+(cls||"")+'">'+v+'</div></div>';}
+
+  function renderHome(){
+    renderStatus();
+    var s=nextStep();
+    $("#homeCmd").textContent=s.cmd; $("#homeHint").textContent=s.hint;
+  }
+
+  function renderPipeline(){
+    var p=state.project;
+    var curIdx=p.configured?PHASES.indexOf(p.phase):0;
+    function loopState(lp){
+      // a loop is "done" if all its phases are before current, "active" if it contains current
+      var idxs=lp.steps.map(function(s){return PHASES.indexOf(s[1]);});
+      if(lp.pre) idxs.push(PHASES.indexOf(lp.pre));
+      if(lp.post) idxs.push(PHASES.indexOf(lp.post));
+      var min=Math.min.apply(null,idxs),max=Math.max.apply(null,idxs);
+      if(curIdx>max) return "done";
+      if(curIdx>=min && curIdx<=max) return "active";
+      return "future";
+    }
+    var html="";
+    // flank: configure
+    html+='<div class="flank '+(p.configured?"done":"")+'" data-phase="configure"><div>CONFIGURE</div><div style="opacity:.6">ⓘ</div></div>';
+    LOOPS.forEach(function(lp,i){
+      var st=loopState(lp);
+      if(st==="active") activeLoop=lp.n;
+      html+='<div class="loop '+(st==="active"?"active":(st==="done"?"":"dim"))+'" data-loop="'+lp.n+'">';
+      html+='<div class="ln">Loop '+lp.n+'</div><div class="nm">'+lp.name+'</div>';
+      html+='<div class="steps">';
+      lp.steps.forEach(function(s,j){
+        if(j) html+='<span class="arr">→</span>';
+        html+='<span class="stp" data-phase="'+s[1]+'">'+s[0]+'</span>';
+      });
+      html+='</div><div class="ret"></div></div>';
+      if(i<LOOPS.length-1) html+='<div class="arrgap">--→</div>';
+    });
+    html+='<div class="flank '+(curIdx>PHASES.indexOf("review")?"done":"")+'" data-phase="merge"><div>MERGE</div><div style="opacity:.6">ⓘ</div></div>';
+    $("#loopwrap").innerHTML=html;
+    renderLoopDetail();
+    $("#roster").innerHTML=AGENTS.map(function(a){return '<div class="ag"><div class="an">'+a[0]+'</div><div class="ar">'+a[1]+'</div></div>';}).join("");
+  }
+  function renderLoopDetail(){
+    var lp=LOOPS.find(function(x){return x.n===activeLoop;})||LOOPS[0];
+    var termLines=lp.term.lines.map(function(l){
+      var cls=l[2]==="o"?"o":(l[2]==="g"?"g":(l[2]==="d"?"d":""));
+      var cur=l[2]==="cur"?'<span class="cur" style="height:1em"></span>':"";
+      return '<span class="d">'+l[0]+'</span><span class="'+cls+'">'+l[1]+'</span>'+cur;
+    }).join("\n");
+    var acc=lp.acc.map(function(a,i){
+      return '<div class="acci '+(i===0?"open":"")+'" data-acc="'+i+'"><div class="ah"><span class="at">'+a[0]+'</span><span class="ac">'+a[1]+'</span><span class="ax">'+(i===0?"▴":"▾")+'</span></div><p>'+a[2]+'</p></div>';
+    }).join("");
+    $("#loopDetail").innerHTML=
+      '<div class="panel"><div class="dl">'+lp.driver+'</div><p>'+driverText(lp.n)+'</p>'+
+        '<div class="io"><span class="iol">Input</span><span class="iov">'+lp.io[0]+'</span></div>'+
+        '<div class="io"><span class="iol">Output</span><span class="iov">'+lp.io[1]+'</span></div></div>'+
+      '<div class="term"><div class="term-bar"><span class="tl"><i class="r"></i><i class="y"></i><i class="g"></i></span><span class="tt">'+lp.term.title+'</span></div><div class="term-body">'+termLines+'</div></div>'+
+      '<div class="acc">'+acc+'</div>';
+  }
+  function driverText(n){
+    return n===1?"You drive this loop. KARIMO auto-detects your project config, scans your codebase, then interviews you across 5 rounds to produce a structured PRD."
+      :n===2?"Claude generates detailed task briefs from your PRD, then a brief-reviewer challenges them for risks and conflicts before any code is written."
+      :"The PM agent dispatches tasks using your integration cadence. Gates between waves enforce quality. Once all gates pass, /karimo:merge validates integration.";
+  }
+
+  function fillAgentSelect(){
+    $("#tAgent").innerHTML=AGENTS.slice(0,8).map(function(a){return '<option value="'+a[0]+'">'+a[0].replace("karimo-","")+'</option>';}).join("");
+  }
+  function renderPrdControls(){
+    var sel=$("#prdSelect");
+    sel.innerHTML=state.prds.length?state.prds.map(function(p){return '<option value="'+p.id+'"'+(p.id===state.activePrd?" selected":"")+'>'+esc(p.name)+' · '+p.tasks.length+' tasks</option>';}).join(""):'<option value="">— no PRDs —</option>';
+    var prd=activePrd();
+    $("#tWave").innerHTML=prd?Array.apply(null,{length:prd.waves||1}).map(function(_,i){return '<option value="'+(i+1)+'">Wave '+(i+1)+'</option>';}).join(""):'<option value="1">Wave 1</option>';
+    $("#slugNote").innerHTML=prd?('PRD slug: <b>'+slugify(prd.name)+'</b> — commands use <span class="mono">--prd '+slugify(prd.name)+'</span>'):"Create a PRD to generate <b>--prd</b> commands.";
+  }
+  function renderWaves(){
+    var prd=activePrd(),wrap=$("#wavesWrap");
+    if(!prd){wrap.innerHTML='<div class="empty"><div class="big">No PRD loaded</div><div>Create a PRD, then add tasks and group them into waves — or hit ◍ up top to load the demo.</div></div>';return;}
+    var n=prd.waves||1,html='<div class="waves">';
+    for(var w=1;w<=n;w++){
+      var col=WAVE_COLORS[(w-1)%WAVE_COLORS.length];
+      var tasks=prd.tasks.filter(function(t){return t.wave===w;});
+      var wdone=tasks.filter(function(t){return t.status==="done";}).length;
+      html+='<div class="waverow"><div class="wl">Wave '+w+' <span style="color:var(--text-3)">'+wdone+'/'+tasks.length+'</span></div><div class="segs">';
+      if(!tasks.length) html+='<div style="font-family:var(--mono);font-size:11px;color:var(--text-3)">empty</div>';
+      tasks.forEach(function(t){ html+=segHtml(t,col); });
+      html+='</div></div>';
+      if(w<n){var passed=state.gates[prd.id]&&state.gates[prd.id][w];
+        html+='<div class="gateline"><div class="gl">gate</div><div style="display:flex;align-items:center;gap:12px"><span class="gatepill '+(passed?"passed":"")+'" data-gate="'+w+'">'+(passed?"Gate "+w+" · approved ✓":"Gate "+w+" · pause")+'</span><span class="dashes"></span></div></div>';
+      }
+    }
+    html+='</div>';
+    wrap.innerHTML=html;
+  }
+  function segHtml(t,col){
+    var st=t.status,bg,bd="transparent",fg="#0c0b0a",lab="";
+    if(st==="done"){bg=col;lab="✓";}
+    else if(st==="active"){bg=hexA(col,.55);fg="#1a1410";}
+    else if(st==="review"){bg="transparent";bd="var(--amber)";fg="var(--amber)";lab="◷";}
+    else if(st==="blocked"){bg="transparent";bd="var(--red)";fg="var(--red)";lab="✕";}
+    else {bg=hexA(col,.16);fg="var(--text-3)";}
+    var id=t.id.slice(-3).toUpperCase();
+    return '<div class="seg" data-task="'+t.id+'" title="'+esc(t.title)+' — click to cycle" style="background:'+bg+';border-color:'+bd+';color:'+fg+'">'+id+' '+lab+'<span class="tlab">'+esc(t.title.slice(0,16))+(t.title.length>16?"…":"")+'</span></div>';
+  }
+  function hexA(hex,a){var h=hex.replace("#","");var r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);return "rgba("+r+","+g+","+b+","+a+")";}
+
+  function renderConfig(){
+    var p=state.project;
+    $("#cName").value=p.name||"";$("#cFramework").value=p.framework||"";$("#cLang").value=p.lang||"";
+    $("#cBuild").value=p.build||"";$("#cTest").value=p.test||"";$("#cReview").value=p.review||"";$("#cThresh").value=p.thresh||"";
+    renderYaml();
+  }
+  function renderYaml(){
+    var p=state.project;
+    var L=[
+      ['<span class="cm"># written by /karimo:configure</span>'],
+      ['<span class="key">project</span>: <span class="val">'+(p.name||"unnamed")+'</span>'],
+      ['<span class="key">stack</span>:'],
+      ['  <span class="key">framework</span>: <span class="val">'+(p.framework||"—")+'</span>'],
+      ['  <span class="key">language</span>: <span class="val">'+(p.lang||"—")+'</span>'],
+      ['<span class="key">build</span>: <span class="val">'+(p.build||"npm run build")+'</span>'],
+      ['<span class="key">test</span>: <span class="val">'+(p.test||"npm run test")+'</span>'],
+      ['<span class="key">review</span>:'],
+      ['  <span class="key">provider</span>: <span class="val">'+(p.review||"none")+'</span>'],
+      ['  <span class="key">threshold</span>: <span class="val">'+(p.thresh!==""&&p.thresh!=null?p.thresh:5)+'</span>']
+    ];
+    $("#yamlPreview").innerHTML=L.join("\n");
+  }
+
+  function renderLog(){
+    var l=$("#logList");
+    l.innerHTML=state.log.length?state.log.map(function(e){return '<div class="e"><span class="ts">'+e.t+'</span><span class="kd '+e.kind+'">'+e.kind+'</span><span class="msg">'+esc(e.msg)+'</span></div>';}).join(""):'<div style="color:var(--text-3);padding:10px 0">— no events yet —</div>';
+  }
+  function renderCmd(){var s=nextStep();$("#nextCmd").textContent=s.cmd;$("#nextHint").textContent=s.hint;}
+  function renderAll(){renderHome();renderPipeline();renderPrdControls();renderWaves();renderConfig();renderLog();renderCmd();}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+
+  /* ---------- actions ---------- */
+  function toast(m){var t=$("#toast");t.textContent=m||"copied";t.classList.add("show");setTimeout(function(){t.classList.remove("show");},1300);}
+  function copy(text){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){toast("copied ✓");},function(){fb(text);});}else fb(text);}
+  function fb(text){var ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast("copied ✓");}catch(e){toast("copy failed");}document.body.removeChild(ta);}
+  function copyNext(){var c=nextStep().cmd;copy(c);logEvent("cmd","copied  "+c);save();renderLog();}
+  function setPhase(id){state.project.configured=true;state.project.phase=id;logEvent("phase","phase → "+id);save();renderAll();}
+  function advance(){var p=state.project;if(!p.configured){p.configured=true;p.phase="research";logEvent("phase","configured → research");}else{var i=PHASES.indexOf(p.phase);if(i<PHASES.length-1){p.phase=PHASES[i+1];logEvent("phase","advanced → "+p.phase);}else logEvent("phase","pipeline complete");}save();renderAll();}
+
+  function nav(id){
+    if(id==="reset"){ if(confirm("Reset cockpit? Clears project, PRDs, tasks and log.")){state=fresh();logEvent("sys","cockpit reset");save();renderAll();toast("reset ✓");} return; }
+    $$(".rk").forEach(function(b){b.classList.toggle("active",b.dataset.nav===id);});
+    $$(".pane").forEach(function(p){p.classList.toggle("active",p.dataset.pane===id);});
+    window.scrollTo({top:0,behavior:"smooth"});
+  }
+
+  function wire(){
+    $$(".rk").forEach(function(b){b.addEventListener("click",function(){nav(b.dataset.nav);});});
+    $$("[data-jump]").forEach(function(b){b.addEventListener("click",function(){nav(b.dataset.jump);});});
+
+    $("#homeCopy").addEventListener("click",copyNext);
+    $("#homeAdvance").addEventListener("click",advance);
+    $("#copyBtn").addEventListener("click",copyNext);
+    $("#advanceBtn").addEventListener("click",advance);
+
+    // pipeline clicks
+    $("#loopwrap").addEventListener("click",function(e){
+      var stp=e.target.closest("[data-phase]"); if(stp){setPhase(stp.dataset.phase);return;}
+      var lp=e.target.closest("[data-loop]"); if(lp){activeLoop=parseInt(lp.dataset.loop,10);renderLoopDetail();}
+    });
+    $("#loopDetail").addEventListener("click",function(e){
+      var a=e.target.closest("[data-acc]"); if(!a)return;
+      a.classList.toggle("open"); var x=a.querySelector(".ax"); if(x)x.textContent=a.classList.contains("open")?"▴":"▾";
+    });
+
+    // config inputs
+    ["cName","cFramework","cLang","cBuild","cTest","cReview","cThresh"].forEach(function(id){
+      $("#"+id).addEventListener("input",function(){var p=state.project;
+        p.name=$("#cName").value.trim();p.framework=$("#cFramework").value.trim();p.lang=$("#cLang").value.trim();
+        p.build=$("#cBuild").value.trim();p.test=$("#cTest").value.trim();p.review=$("#cReview").value.trim();p.thresh=$("#cThresh").value.trim();
+        renderYaml();renderStatus();renderCmd();$("#homeCmd").textContent=nextStep().cmd;save();});
+    });
+    $("#saveCfgBtn").addEventListener("click",function(){state.project.configured=true;if(state.project.phase==="configure")state.project.phase="research";logEvent("phase","config saved — configured");save();renderAll();toast("config saved ✓");});
+    $("#autoCfgBtn").addEventListener("click",function(){var p=state.project;p.name=p.name||"my-project";p.framework="Next.js 16";p.lang="TypeScript";p.build="npm run build";p.test="npm run test";p.review="Greptile";p.thresh="5";logEvent("sys","filled demo stack");save();renderConfig();renderStatus();renderCmd();});
+
+    // prd controls
+    $("#prdSelect").addEventListener("change",function(e){state.activePrd=e.target.value||null;save();renderPrdControls();renderWaves();renderCmd();renderHome();});
+    $("#newPrdBtn").addEventListener("click",function(){var name=prompt("PRD name (e.g. auth-system):");if(!name)return;var prd={id:uid("prd"),name:name.trim(),tasks:[],waves:1};state.prds.push(prd);state.activePrd=prd.id;logEvent("sys","created PRD: "+prd.name);save();renderPrdControls();renderWaves();renderStatus();renderCmd();renderHome();});
+    $("#delPrdBtn").addEventListener("click",function(){var prd=activePrd();if(!prd)return;if(!confirm('Delete PRD "'+prd.name+'"?'))return;state.prds=state.prds.filter(function(p){return p.id!==prd.id;});delete state.gates[prd.id];state.activePrd=state.prds.length?state.prds[0].id:null;logEvent("sys","deleted PRD: "+prd.name);save();renderPrdControls();renderWaves();renderStatus();renderCmd();renderHome();});
+    $("#addWaveBtn").addEventListener("click",function(){var prd=activePrd();if(!prd){toast("create a PRD first");return;}prd.waves=(prd.waves||1)+1;logEvent("sys","added Wave "+prd.waves);save();renderPrdControls();renderWaves();});
+    $("#addTaskBtn").addEventListener("click",function(){if(!activePrd()){toast("create a PRD first");return;}$("#taskForm").classList.toggle("hide");$("#tTitle").focus();});
+    $("#cancelTaskBtn").addEventListener("click",function(){$("#taskForm").classList.add("hide");});
+    $("#saveTaskBtn").addEventListener("click",function(){var prd=activePrd();if(!prd)return;var title=$("#tTitle").value.trim();if(!title){toast("title required");return;}prd.tasks.push({id:uid("task"),title:title,wave:parseInt($("#tWave").value,10)||1,agent:$("#tAgent").value,status:"pending"});$("#tTitle").value="";logEvent("task","added: "+title);save();renderWaves();renderPrdControls();renderStatus();renderHome();});
+
+    $("#wavesWrap").addEventListener("click",function(e){
+      var seg=e.target.closest("[data-task]");
+      if(seg){var prd=activePrd();var t=prd.tasks.find(function(x){return x.id===seg.dataset.task;});var i=STATUSES.indexOf(t.status);t.status=STATUSES[(i+1)%STATUSES.length];logEvent("task",t.title.slice(0,28)+" → "+t.status);save();renderWaves();renderStatus();renderHome();return;}
+      var g=e.target.closest("[data-gate]");
+      if(g){var prd2=activePrd();var n=parseInt(g.dataset.gate,10);state.gates[prd2.id]=state.gates[prd2.id]||{};state.gates[prd2.id][n]=!state.gates[prd2.id][n];logEvent("gate","wave "+n+" gate "+(state.gates[prd2.id][n]?"approved ✓":"reopened"));save();renderWaves();renderCmd();renderHome();}
+    });
+
+    $("#demoBtn").addEventListener("click",loadDemo);
+    document.addEventListener("keydown",function(e){if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;if(e.key==="c")copyNext();});
+  }
+
+  /* ---------- demo ---------- */
+  function loadDemo(){
+    state=fresh();
+    state.project={name:"framer-cms-migration",framework:"Next.js 16",lang:"TypeScript",build:"npm run build",test:"npm run test",review:"Greptile",thresh:"5",configured:true,phase:"run"};
+    var T=[
+      ["Scaffold Next.js 16 App Router",1,"karimo-implementer"],["Port global layout & theme tokens",1,"karimo-implementer"],
+      ["Set up MDX + content pipeline",1,"karimo-implementer-opus"],["Define CMS schema & types",1,"karimo-implementer"],
+      ["Image compression + next/image loader",1,"karimo-implementer-opus"],
+      ["Port hero section",2,"karimo-implementer"],["Port projects grid",2,"karimo-implementer"],
+      ["Port case-study template",2,"karimo-implementer"],["Port nav + footer",2,"karimo-implementer"],
+      ["Migrate 67 images to /public",2,"karimo-implementer"],
+      ["Wire dynamic routes from CMS",3,"karimo-implementer-opus"],["SEO: metadata, OG, sitemap",3,"karimo-implementer"],
+      ["Redirects map from Framer URLs",3,"karimo-implementer"],["Analytics + consent",3,"karimo-implementer"],
+      ["Accessibility pass",3,"karimo-reviewer"],
+      ["Lighthouse + perf budget",4,"karimo-implementer"],["Visual regression vs baseline",4,"karimo-reviewer"],
+      ["Final content QA",4,"karimo-reviewer"],["Deploy preview + smoke test",4,"karimo-pm"],
+      ["Cut over DNS + archive Framer",4,"karimo-pm"]
+    ];
+    var prd={id:uid("prd"),name:"framer-cms-migration",tasks:[],waves:4};
+    T.forEach(function(r,i){var st="pending";if(r[1]===1)st="done";else if(r[1]===2)st=(i%2?"active":"done");else if(r[1]===3&&i===10)st="review";prd.tasks.push({id:uid("task"),title:r[0],wave:r[1],agent:r[2],status:st});});
+    state.prds=[prd];state.activePrd=prd.id;state.gates[prd.id]={1:true,2:false,3:false};
+    logEvent("sys","loaded demo: framer-cms-migration (20 tasks / 4 waves)");
+    save();renderAll();nav("prds");toast("demo loaded ✓");
+  }
+
+  /* ---------- boot ---------- */
+  function reveal(){$("#boot").classList.add("hide");$("#app").classList.remove("hide");$("#cmdbar").classList.remove("hide");}
+  function runBoot(){
+    var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var lines=$$("#boot .ln");
+    if(reduce){reveal();return;}
+    var i=0,iv=setInterval(function(){if(i<lines.length){lines[i].classList.add("on");i++;}else{clearInterval(iv);setTimeout(reveal,420);}},190);
+    $("#boot").addEventListener("click",function(){clearInterval(iv);reveal();});
+  }
+
+  (async function(){
+    wire(); fillAgentSelect();
+    var saved=await load();
+    if(saved&&saved.project){state=saved;state.gates=state.gates||{};}
+    else logEvent("sys","cockpit initialized — configure your project or load the demo");
+    renderAll(); runBoot();
+  })();
+})();
+</script>
